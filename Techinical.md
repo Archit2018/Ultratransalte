@@ -223,3 +223,23 @@ When enabled, displays both original and translated text:
 - **No DOM Pollution**: Avoids adding data-* attributes to DOM
 - **Cache Management**: Computed styles cached for performance
 - **Cleanup**: Proper cleanup when restoring original text
+
+### Loading Indicator System
+
+#### Visual Feedback
+- **Full-Screen Overlay**: Dark semi-transparent backdrop with blur effect
+- **Progress Tracking**: Real-time percentage and progress bar
+- **Multi-language Support**: Loading text in user's interface language
+- **Smooth Animations**: Spinning loader and progress bar animations
+
+#### Implementation Details
+- **Progress Calculation**: Tracks batch completion for accurate progress
+- **Auto-removal**: Cleans up when translation completes or stops
+- **Responsive Design**: Adapts to mobile and desktop screens
+- **Performance**: Minimal DOM impact with single overlay element
+
+#### Button States
+- **Translation Button**: Shows loading state with emoji indicators
+- **Stop Button**: Visual feedback during stop operation
+- **Disabled States**: Prevents duplicate actions during translation
+- **Auto-recovery**: Buttons return to normal state after completion
