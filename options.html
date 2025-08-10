@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UltraTranslate Settings</title>
+    <link rel="stylesheet" href="options.css">
+</head>
+<body>
+    <div class="options-container">
+        <div class="sidebar">
+            <h1 data-i18n="settingsTitle">UltraTranslate Settings</h1>
+            <nav class="nav-menu">
+                <a href="#general" class="nav-item active" data-i18n="generalSettings">General</a>
+                <a href="#api" class="nav-item" data-i18n="apiSettings">API Configuration</a>
+                <a href="#translation" class="nav-item" data-i18n="translationSettings">Translation</a>
+                <a href="#appearance" class="nav-item" data-i18n="appearanceSettings">Appearance</a>
+                <a href="#advanced" class="nav-item" data-i18n="advancedSettings">Advanced</a>
+                <a href="#about" class="nav-item" data-i18n="aboutSettings">About</a>
+            </nav>
+        </div>
+
+        <div class="content">
+            <!-- General Settings -->
+            <section id="general" class="settings-section active">
+                <h2 data-i18n="generalSettings">General Settings</h2>
+                
+                <div class="setting-item">
+                    <label for="interface-language" data-i18n="interfaceLanguage">Interface Language:</label>
+                    <select id="interface-language">
+                        <option value="en">English</option>
+                        <option value="zh-CN">中文简体</option>
+                        <option value="zh-TW">中文繁體</option>
+                        <option value="ja">日本語</option>
+                        <option value="ko">한국어</option>
+                        <option value="es">Español</option>
+                        <option value="fr">Français</option>
+                        <option value="de">Deutsch</option>
+                        <option value="ru">Русский</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <label for="target-language" data-i18n="defaultTargetLanguage">Default Target Language:</label>
+                    <select id="target-language">
+                        <option value="zh-CN" data-i18n="langZhCN">Chinese (Simplified)</option>
+                        <option value="zh-TW" data-i18n="langZhTW">Chinese (Traditional)</option>
+                        <option value="en" data-i18n="langEn">English</option>
+                        <option value="es" data-i18n="langEs">Spanish</option>
+                        <option value="fr" data-i18n="langFr">French</option>
+                        <option value="de" data-i18n="langDe">German</option>
+                        <option value="ja" data-i18n="langJa">Japanese</option>
+                        <option value="ko" data-i18n="langKo">Korean</option>
+                        <option value="ru" data-i18n="langRu">Russian</option>
+                        <option value="ar" data-i18n="langAr">Arabic</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <label class="switch-label">
+                        <input type="checkbox" id="auto-translate">
+                        <span class="switch"></span>
+                        <span data-i18n="autoTranslate">Auto Translate</span>
+                    </label>
+                    <small data-i18n="autoTranslateDesc">Automatically translate pages when loaded</small>
+                </div>
+
+                <div class="setting-item">
+                    <label class="switch-label">
+                        <input type="checkbox" id="preserve-original">
+                        <span class="switch"></span>
+                        <span data-i18n="preserveOriginal">Preserve Original Text</span>
+                    </label>
+                    <small data-i18n="preserveOriginalDesc">Show both original and translated text</small>
+                </div>
+            </section>
+
+            <!-- API Settings -->
+            <section id="api" class="settings-section">
+                <h2 data-i18n="apiSettings">API Configuration</h2>
+                
+                <div class="setting-item">
+                    <label for="translation-api" data-i18n="translationApi">Translation API:</label>
+                    <select id="translation-api">
+                        <option value="google">Google Translate (Free)</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="baidu">Baidu</option>
+                    </select>
+                </div>
+
+                <div class="api-config" id="api-key-section">
+                    <div class="setting-item">
+                        <label for="api-key" data-i18n="apiKey">API Key:</label>
+                        <div class="input-group">
+                            <input type="password" id="api-key" placeholder="Enter your API key" data-i18n-placeholder="apiKeyPlaceholder">
+                            <button id="toggle-api-key" class="icon-btn">👁️</button>
+                        </div>
+                        <small id="api-help" data-i18n="apiHelp">Get your API key from the provider's website</small>
+                    </div>
+
+                    <div class="api-links">
+                        <h3 data-i18n="apiProviders">API Providers:</h3>
+                        <ul>
+                            <li><a href="https://platform.deepseek.com/" target="_blank">DeepSeek API</a></li>
+                            <li><a href="https://platform.openai.com/" target="_blank">OpenAI API</a></li>
+                            <li><a href="https://fanyi-api.baidu.com/" target="_blank">Baidu API</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Translation Settings -->
+            <section id="translation" class="settings-section">
+                <h2 data-i18n="translationSettings">Translation Settings</h2>
+                
+                <div class="setting-item">
+                    <label for="custom-prompt" data-i18n="customPrompt">Custom Translation Prompt:</label>
+                    <textarea id="custom-prompt" rows="8" placeholder="Enter custom prompt for AI translation" data-i18n-placeholder="customPromptPlaceholder"></textarea>
+                    <small data-i18n="customPromptDesc">Only works with DeepSeek and OpenAI APIs. Use {language} as placeholder for target language.</small>
+                </div>
+
+                <div class="setting-item">
+                    <label for="batch-size" data-i18n="batchSize">Batch Size:</label>
+                    <input type="number" id="batch-size" min="10" max="100" value="50">
+                    <small data-i18n="batchSizeDesc">Number of texts to translate in one batch</small>
+                </div>
+
+                <div class="setting-item">
+                    <label for="translation-delay" data-i18n="translationDelay">Translation Delay (ms):</label>
+                    <input type="number" id="translation-delay" min="0" max="5000" value="50">
+                    <small data-i18n="translationDelayDesc">Delay between translation batches</small>
+                </div>
+
+                <div class="setting-item">
+                    <label class="switch-label">
+                        <input type="checkbox" id="translate-tooltips">
+                        <span class="switch"></span>
+                        <span data-i18n="translateTooltips">Translate Tooltips</span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <label class="switch-label">
+                        <input type="checkbox" id="translate-placeholders">
+                        <span class="switch"></span>
+                        <span data-i18n="translatePlaceholders">Translate Placeholders</span>
+                    </label>
+                </div>
+            </section>
+
+            <!-- Appearance Settings -->
+            <section id="appearance" class="settings-section">
+                <h2 data-i18n="appearanceSettings">Appearance Settings</h2>
+                
+                <div class="setting-item">
+                    <label for="translation-style" data-i18n="translationStyle">Translation Style:</label>
+                    <select id="translation-style">
+                        <option value="highlight" data-i18n="styleHighlight">Highlight</option>
+                        <option value="underline" data-i18n="styleUnderline">Underline</option>
+                        <option value="bubble" data-i18n="styleBubble">Bubble</option>
+                        <option value="side-by-side" data-i18n="styleSideBySide">Side by Side</option>
+                    </select>
+                </div>
+
+                <div class="setting-item">
+                    <label for="translation-color" data-i18n="translationColor">Translation Color:</label>
+                    <input type="color" id="translation-color" value="#10a37f">
+                </div>
+
+                <div class="setting-item">
+                    <label for="font-size" data-i18n="fontSize">Font Size Adjustment:</label>
+                    <input type="range" id="font-size" min="80" max="120" value="100">
+                    <span id="font-size-value">100%</span>
+                </div>
+
+                <div class="setting-item">
+                    <label for="opacity" data-i18n="originalOpacity">Original Text Opacity:</label>
+                    <input type="range" id="opacity" min="30" max="100" value="60">
+                    <span id="opacity-value">60%</span>
+                </div>
+            </section>
+
+            <!-- Advanced Settings -->
+            <section id="advanced" class="settings-section">
+                <h2 data-i18n="advancedSettings">Advanced Settings</h2>
+                
+                <div class="cache-section">
+                    <h3 data-i18n="cacheManagement">Cache Management</h3>
+                    <div class="cache-info">
+                        <div class="cache-stats">
+                            <div class="stat-item">
+                                <span data-i18n="cacheSize">Cache Size:</span>
+                                <span id="cache-size">0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span data-i18n="cacheLimit">Cache Limit:</span>
+                                <span>1000</span>
+                            </div>
+                        </div>
+                        <button id="clear-cache" class="danger-btn" data-i18n="clearCache">Clear Cache</button>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <label for="cache-expiry" data-i18n="cacheExpiry">Cache Expiry (hours):</label>
+                    <input type="number" id="cache-expiry" min="1" max="168" value="24">
+                </div>
+
+                <div class="setting-item">
+                    <label class="switch-label">
+                        <input type="checkbox" id="debug-mode">
+                        <span class="switch"></span>
+                        <span data-i18n="debugMode">Debug Mode</span>
+                    </label>
+                    <small data-i18n="debugModeDesc">Show console logs for debugging</small>
+                </div>
+
+                <div class="setting-item">
+                    <h3 data-i18n="excludedSites">Excluded Sites</h3>
+                    <textarea id="excluded-sites" rows="5" placeholder="Enter URLs to exclude (one per line)" data-i18n-placeholder="excludedSitesPlaceholder"></textarea>
+                    <small data-i18n="excludedSitesDesc">Pages that won't be auto-translated</small>
+                </div>
+
+                <div class="setting-item">
+                    <button id="export-settings" class="secondary-btn" data-i18n="exportSettings">Export Settings</button>
+                    <button id="import-settings" class="secondary-btn" data-i18n="importSettings">Import Settings</button>
+                    <input type="file" id="import-file" accept=".json" style="display: none;">
+                </div>
+
+                <div class="setting-item">
+                    <button id="reset-settings" class="danger-btn" data-i18n="resetSettings">Reset All Settings</button>
+                </div>
+            </section>
+
+            <!-- About Section -->
+            <section id="about" class="settings-section">
+                <h2 data-i18n="aboutSettings">About</h2>
+                
+                <div class="about-content">
+                    <div class="about-item">
+                        <h3>UltraTranslate</h3>
+                        <p data-i18n="version">Version: 1.0.0</p>
+                    </div>
+
+                    <div class="about-item">
+                        <h3 data-i18n="features">Features</h3>
+                        <ul>
+                            <li data-i18n="feature1">Multi-API translation support</li>
+                            <li data-i18n="feature2">Preserve original text option</li>
+                            <li data-i18n="feature3">Custom translation prompts</li>
+                            <li data-i18n="feature4">Translation caching</li>
+                            <li data-i18n="feature5">9 interface languages</li>
+                        </ul>
+                    </div>
+
+                    <div class="about-item">
+                        <h3 data-i18n="shortcuts">Keyboard Shortcuts</h3>
+                        <ul>
+                            <li><kbd>Alt+T</kbd> - <span data-i18n="shortcut1">Toggle translation</span></li>
+                            <li><kbd>Alt+O</kbd> - <span data-i18n="shortcut2">Toggle original text</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="about-item">
+                        <h3 data-i18n="support">Support</h3>
+                        <p data-i18n="supportText">For issues or suggestions, please visit our GitHub page.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <div id="status-message"></div>
+    <script src="options.js"></script>
+</body>
+</html>

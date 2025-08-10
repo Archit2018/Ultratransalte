@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Icons</title>
+</head>
+<body>
+    <h2>Generate Extension Icons</h2>
+    <p>Right-click each canvas and save as PNG with the corresponding filename</p>
+    
+    <div>
+        <h3>icon16.png (16x16)</h3>
+        <canvas id="icon16" width="16" height="16"></canvas>
+    </div>
+    
+    <div>
+        <h3>icon48.png (48x48)</h3>
+        <canvas id="icon48" width="48" height="48"></canvas>
+    </div>
+    
+    <div>
+        <h3>icon128.png (128x128)</h3>
+        <canvas id="icon128" width="128" height="128"></canvas>
+    </div>
+    
+    <script>
+        function drawIcon(canvas, size) {
+            const ctx = canvas.getContext('2d');
+            
+            // Create gradient
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            
+            // Draw rounded rectangle
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, size, size, size * 0.15);
+            ctx.fill();
+            
+            // Draw text
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            if (size >= 48) {
+                ctx.font = `bold ${size * 0.35}px Arial`;
+                ctx.fillText('译', size/2, size * 0.35);
+                ctx.font = `bold ${size * 0.25}px Arial`;
+                ctx.fillText('A→中', size/2, size * 0.7);
+            } else {
+                ctx.font = `bold ${size * 0.6}px Arial`;
+                ctx.fillText('译', size/2, size/2);
+            }
+        }
+        
+        // Draw all icons
+        drawIcon(document.getElementById('icon16'), 16);
+        drawIcon(document.getElementById('icon48'), 48);
+        drawIcon(document.getElementById('icon128'), 128);
+    </script>
+</body>
+</html>

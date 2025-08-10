@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UltraTranslate</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="popup-container">
+        <div class="popup-header">
+            <h2 data-i18n="appName">UltraTranslate</h2>
+            <a href="options.html" target="_blank" id="open-settings" class="settings-btn" title="Settings">⚙️</a>
+        </div>
+        
+        <div class="quick-settings">
+            <div class="quick-setting">
+                <label data-i18n="targetLanguage">Target Language:</label>
+                <select id="quick-target-language">
+                    <option value="zh-CN" data-i18n="langZhCN">Chinese (Simplified)</option>
+                    <option value="zh-TW" data-i18n="langZhTW">Chinese (Traditional)</option>
+                    <option value="en" data-i18n="langEn">English</option>
+                    <option value="es" data-i18n="langEs">Spanish</option>
+                    <option value="fr" data-i18n="langFr">French</option>
+                    <option value="de" data-i18n="langDe">German</option>
+                    <option value="ja" data-i18n="langJa">Japanese</option>
+                    <option value="ko" data-i18n="langKo">Korean</option>
+                    <option value="ru" data-i18n="langRu">Russian</option>
+                    <option value="ar" data-i18n="langAr">Arabic</option>
+                </select>
+            </div>
+
+            <div class="quick-toggles">
+                <label class="toggle-label">
+                    <input type="checkbox" id="quick-preserve-original">
+                    <span data-i18n="preserveOriginal">Preserve Original</span>
+                </label>
+                <label class="toggle-label">
+                    <input type="checkbox" id="quick-auto-translate">
+                    <span data-i18n="autoTranslate">Auto Translate</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="action-buttons">
+            <button id="translate-now" class="primary-btn" data-i18n="translatePage">Translate Page</button>
+            <button id="stop-translation" class="secondary-btn" data-i18n="stopTranslation">Stop Translation</button>
+        </div>
+
+        <div class="status-bar">
+            <span id="api-status" class="api-indicator"></span>
+            <span id="cache-indicator" class="cache-indicator">
+                <span data-i18n="cache">Cache</span>: <span id="cache-count">0</span>
+            </span>
+        </div>
+
+        <div id="quick-status-message"></div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
