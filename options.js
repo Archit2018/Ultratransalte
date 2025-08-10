@@ -19,9 +19,11 @@ const translations = {
         apiKeyPlaceholder: 'Enter your API key',
         apiHelp: 'Get your API key from the provider\'s website',
         apiProviders: 'API Providers:',
+        modelName: 'Model:',
+        modelHelp: 'Select the model to use for translation',
         customPrompt: 'Custom Translation Prompt:',
         customPromptPlaceholder: 'Enter custom prompt for AI translation (e.g., "Translate to {language} keeping technical terms, be concise and natural")',
-        customPromptDesc: 'Only works with DeepSeek and OpenAI APIs. Use {language} as placeholder for target language.',
+        customPromptDesc: 'Only works with DeepSeek, OpenAI, Gemini and Qwen APIs. Use {language} as placeholder for target language.',
         batchSize: 'Batch Size:',
         batchSizeDesc: 'Number of texts to translate in one batch',
         translationDelay: 'Translation Delay (ms):',
@@ -88,9 +90,11 @@ const translations = {
         apiKeyPlaceholder: '请输入您的API密钥',
         apiHelp: '从提供商网站获取API密钥',
         apiProviders: 'API提供商：',
+        modelName: '模型：',
+        modelHelp: '选择要用于翻译的模型',
         customPrompt: '自定义翻译提示词：',
         customPromptPlaceholder: '输入AI翻译的自定义提示词（例如："翻译成{语言}，保留专业术语，简洁自然"）',
-        customPromptDesc: '仅适用于DeepSeek和OpenAI API。使用{language}作为目标语言占位符。',
+        customPromptDesc: '仅适用于DeepSeek、OpenAI、Gemini和Qwen API。使用{language}作为目标语言占位符。',
         batchSize: '批处理大小：',
         batchSizeDesc: '一批翻译的文本数量',
         translationDelay: '翻译延迟（毫秒）：',
@@ -185,6 +189,7 @@ function setupEventListeners() {
     document.getElementById('translation-api').addEventListener('change', handleApiChange);
     document.getElementById('api-key').addEventListener('blur', saveSettings);
     document.getElementById('toggle-api-key').addEventListener('click', toggleApiKeyVisibility);
+    document.getElementById('model-name').addEventListener('change', saveSettings);
     
     // Translation settings
     document.getElementById('custom-prompt').addEventListener('blur', saveSettings);
@@ -226,6 +231,16 @@ async function loadSettings() {
         document.getElementById('api-key').value = settings.apiKey || '';
         handleApiChange();
         
+        // Load model name after API change populates the options
+        if (settings.modelName) {
+            setTimeout(() => {
+                const modelSelect = document.getElementById('model-name');
+                if (modelSelect && Array.from(modelSelect.options).some(opt => opt.value === settings.modelName)) {
+                    modelSelect.value = settings.modelName;
+                }
+            }, 100);
+        }
+        
         // Translation settings
         document.getElementById('custom-prompt').value = settings.customPrompt || '';
         document.getElementById('batch-size').value = settings.batchSize || 50;
@@ -265,6 +280,7 @@ async function saveSettings() {
         // API
         translationApi: document.getElementById('translation-api').value,
         apiKey: document.getElementById('api-key').value,
+        modelName: document.getElementById('model-name').value,
         
         // Translation
         customPrompt: document.getElementById('custom-prompt').value,
@@ -325,12 +341,80 @@ function updateInterfaceLanguage(lang) {
 function handleApiChange() {
     const api = document.getElementById('translation-api').value;
     const apiKeySection = document.getElementById('api-key-section');
+    const modelSection = document.getElementById('model-selection-section');
+    const modelSelect = document.getElementById('model-name');
     
     if (api === 'google') {
         apiKeySection.style.display = 'none';
+        modelSection.style.display = 'none';
     } else {
         apiKeySection.style.display = 'block';
+        
+        // Show model selection for AI-based APIs
+        if (['deepseek', 'openai', 'gemini', 'qwen'].includes(api)) {
+            modelSection.style.display = 'block';
+            populateModelOptions(api);
+        } else {
+            modelSection.style.display = 'none';
+        }
     }
+    
+    saveSettings();
+}
+
+// Populate model options based on selected API
+function populateModelOptions(api) {
+    const modelSelect = document.getElementById('model-name');
+    modelSelect.innerHTML = '';
+    
+    let models = [];
+    switch(api) {
+        case 'deepseek':
+            models = [
+                { value: 'deepseek-chat', text: 'DeepSeek Chat (Default)' },
+                { value: 'deepseek-coder', text: 'DeepSeek Coder' }
+            ];
+            break;
+        case 'openai':
+            models = [
+                { value: 'gpt-3.5-turbo', text: 'GPT-3.5 Turbo (Default)' },
+                { value: 'gpt-4', text: 'GPT-4' },
+                { value: 'gpt-4-turbo', text: 'GPT-4 Turbo' },
+                { value: 'gpt-4o', text: 'GPT-4o' },
+                { value: 'gpt-4o-mini', text: 'GPT-4o Mini' }
+            ];
+            break;
+        case 'gemini':
+            models = [
+                { value: 'gemini-1.5-flash', text: 'Gemini 1.5 Flash (Default)' },
+                { value: 'gemini-1.5-flash-8b', text: 'Gemini 1.5 Flash 8B' },
+                { value: 'gemini-1.5-pro', text: 'Gemini 1.5 Pro' },
+                { value: 'gemini-2.0-flash-exp', text: 'Gemini 2.0 Flash (Experimental)' }
+            ];
+            break;
+        case 'qwen':
+            models = [
+                { value: 'qwen-plus', text: 'Qwen Plus (Default)' },
+                { value: 'qwen-max', text: 'Qwen Max' },
+                { value: 'qwen-flash', text: 'Qwen Flash' },
+                { value: 'qwen-turbo', text: 'Qwen Turbo' }
+            ];
+            break;
+    }
+    
+    models.forEach(model => {
+        const option = document.createElement('option');
+        option.value = model.value;
+        option.textContent = model.text;
+        modelSelect.appendChild(option);
+    });
+    
+    // Load saved model if exists
+    chrome.storage.sync.get(['modelName'], (result) => {
+        if (result.modelName && Array.from(modelSelect.options).some(opt => opt.value === result.modelName)) {
+            modelSelect.value = result.modelName;
+        }
+    });
 }
 
 // Toggle API key visibility

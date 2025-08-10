@@ -86,6 +86,8 @@
                         <option value="deepseek">DeepSeek</option>
                         <option value="openai">OpenAI</option>
                         <option value="baidu">Baidu</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="qwen">Alibaba Qwen</option>
                     </select>
                 </div>
 
@@ -99,12 +101,22 @@
                         <small id="api-help" data-i18n="apiHelp">Get your API key from the provider's website</small>
                     </div>
 
+                    <div class="setting-item" id="model-selection-section" style="display: none;">
+                        <label for="model-name" data-i18n="modelName">Model:</label>
+                        <select id="model-name">
+                            <!-- Options will be populated dynamically based on selected API -->
+                        </select>
+                        <small id="model-help" data-i18n="modelHelp">Select the model to use for translation</small>
+                    </div>
+
                     <div class="api-links">
                         <h3 data-i18n="apiProviders">API Providers:</h3>
                         <ul>
                             <li><a href="https://platform.deepseek.com/" target="_blank">DeepSeek API</a></li>
                             <li><a href="https://platform.openai.com/" target="_blank">OpenAI API</a></li>
                             <li><a href="https://fanyi-api.baidu.com/" target="_blank">Baidu API</a></li>
+                            <li><a href="https://aistudio.google.com/app/apikey" target="_blank">Google Gemini API</a></li>
+                            <li><a href="https://dashscope.console.aliyun.com/" target="_blank">Alibaba Qwen API</a></li>
                         </ul>
                     </div>
                 </div>
@@ -117,7 +129,7 @@
                 <div class="setting-item">
                     <label for="custom-prompt" data-i18n="customPrompt">Custom Translation Prompt:</label>
                     <textarea id="custom-prompt" rows="8" placeholder="Enter custom prompt for AI translation" data-i18n-placeholder="customPromptPlaceholder"></textarea>
-                    <small data-i18n="customPromptDesc">Only works with DeepSeek and OpenAI APIs. Use {language} as placeholder for target language.</small>
+                    <small data-i18n="customPromptDesc">Only works with DeepSeek, OpenAI, Gemini and Qwen APIs. Use {language} as placeholder for target language.</small>
                 </div>
 
                 <div class="setting-item">

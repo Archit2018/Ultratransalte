@@ -443,7 +443,9 @@ async function translateCurrentPage() {
         translationApi: 'google',
         apiKey: '',
         targetLanguage: 'zh-CN',
-        preserveOriginal: true
+        preserveOriginal: true,
+        modelName: '',
+        customPrompt: ''
     });
     
     if (settings.translationApi !== 'google' && !settings.apiKey) {
@@ -532,11 +534,20 @@ async function updateApiStatus() {
     
     const apiIndicator = document.getElementById('api-status');
     
+    const apiNames = {
+        'google': 'Google Translate',
+        'deepseek': 'DeepSeek',
+        'openai': 'OpenAI',
+        'baidu': 'Baidu',
+        'gemini': 'Google Gemini',
+        'qwen': 'Alibaba Qwen'
+    };
+    
     if (settings.translationApi === 'google') {
-        apiIndicator.textContent = 'Google Translate';
+        apiIndicator.textContent = apiNames[settings.translationApi];
         apiIndicator.classList.remove('offline');
     } else if (settings.apiKey) {
-        apiIndicator.textContent = settings.translationApi.charAt(0).toUpperCase() + settings.translationApi.slice(1);
+        apiIndicator.textContent = apiNames[settings.translationApi] || settings.translationApi.charAt(0).toUpperCase() + settings.translationApi.slice(1);
         apiIndicator.classList.remove('offline');
     } else {
         apiIndicator.textContent = 'No API Key';

@@ -62,17 +62,21 @@ function setCachedTranslation(text, targetLanguage, api, translation) {
 }
 
 async function handleTranslation(texts, settings) {
-    const { translationApi, apiKey, targetLanguage, customPrompt } = settings;
+    const { translationApi, apiKey, targetLanguage, customPrompt, modelName } = settings;
     
     switch (translationApi) {
         case 'google':
             return translateWithGoogle(texts, targetLanguage);
         case 'deepseek':
-            return translateWithDeepSeek(texts, targetLanguage, apiKey, customPrompt);
+            return translateWithDeepSeek(texts, targetLanguage, apiKey, customPrompt, modelName);
         case 'openai':
-            return translateWithOpenAI(texts, targetLanguage, apiKey, customPrompt);
+            return translateWithOpenAI(texts, targetLanguage, apiKey, customPrompt, modelName);
         case 'baidu':
             return translateWithBaidu(texts, targetLanguage, apiKey);
+        case 'gemini':
+            return translateWithGemini(texts, targetLanguage, apiKey, customPrompt, modelName);
+        case 'qwen':
+            return translateWithQwen(texts, targetLanguage, apiKey, customPrompt, modelName);
         default:
             throw new Error(`Unsupported translation API: ${translationApi}`);
     }
@@ -121,7 +125,7 @@ async function translateWithGoogle(texts, targetLanguage) {
     return translations;
 }
 
-async function translateWithDeepSeek(texts, targetLanguage, apiKey, customPrompt) {
+async function translateWithDeepSeek(texts, targetLanguage, apiKey, customPrompt, modelName) {
     if (!apiKey) {
         throw new Error('DeepSeek API key is required');
     }
@@ -156,7 +160,7 @@ async function translateWithDeepSeek(texts, targetLanguage, apiKey, customPrompt
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                model: 'deepseek-chat',
+                model: modelName || 'deepseek-chat',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
@@ -195,7 +199,7 @@ async function translateWithDeepSeek(texts, targetLanguage, apiKey, customPrompt
     }
 }
 
-async function translateWithOpenAI(texts, targetLanguage, apiKey, customPrompt) {
+async function translateWithOpenAI(texts, targetLanguage, apiKey, customPrompt, modelName) {
     if (!apiKey) {
         throw new Error('OpenAI API key is required');
     }
@@ -230,7 +234,7 @@ async function translateWithOpenAI(texts, targetLanguage, apiKey, customPrompt) 
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                model: 'gpt-3.5-turbo',
+                model: modelName || 'gpt-3.5-turbo',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
@@ -306,6 +310,165 @@ async function translateWithBaidu(texts, targetLanguage, apiKey) {
     }
     
     return translations;
+}
+
+async function translateWithGemini(texts, targetLanguage, apiKey, customPrompt, modelName) {
+    if (!apiKey) {
+        throw new Error('Gemini API key is required');
+    }
+    
+    // Check cache for all texts
+    const translations = [];
+    const uncachedTexts = [];
+    const uncachedIndices = [];
+    
+    for (let i = 0; i < texts.length; i++) {
+        const cached = getCachedTranslation(texts[i], targetLanguage, 'gemini');
+        if (cached) {
+            translations[i] = cached;
+        } else {
+            uncachedTexts.push(texts[i]);
+            uncachedIndices.push(i);
+        }
+    }
+    
+    if (uncachedTexts.length === 0) {
+        return translations;
+    }
+    
+    const systemPrompt = customPrompt || getSystemPrompt(targetLanguage);
+    const userPrompt = uncachedTexts.join('\n---\n');
+    const model = modelName || 'gemini-1.5-flash';
+    
+    try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                contents: [
+                    {
+                        parts: [
+                            {
+                                text: `${systemPrompt}\n\n${userPrompt}`
+                            }
+                        ]
+                    }
+                ],
+                generationConfig: {
+                    temperature: 0.3,
+                    maxOutputTokens: 2000,
+                    topP: 0.8,
+                    topK: 40
+                }
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+            const translatedContent = data.candidates[0].content.parts[0].text;
+            const translatedTexts = translatedContent.split('\n---\n').map(t => t.trim());
+            
+            for (let i = 0; i < translatedTexts.length && i < uncachedTexts.length; i++) {
+                const translation = translatedTexts[i];
+                const originalText = uncachedTexts[i];
+                const index = uncachedIndices[i];
+                
+                translations[index] = translation;
+                setCachedTranslation(originalText, targetLanguage, 'gemini', translation);
+            }
+        } else {
+            for (let i = 0; i < uncachedIndices.length; i++) {
+                translations[uncachedIndices[i]] = uncachedTexts[i];
+            }
+        }
+        
+        return translations;
+    } catch (error) {
+        console.error('Gemini translation error:', error);
+        for (let i = 0; i < uncachedIndices.length; i++) {
+            translations[uncachedIndices[i]] = uncachedTexts[i];
+        }
+        return translations;
+    }
+}
+
+async function translateWithQwen(texts, targetLanguage, apiKey, customPrompt, modelName) {
+    if (!apiKey) {
+        throw new Error('Qwen API key is required');
+    }
+    
+    // Check cache for all texts
+    const translations = [];
+    const uncachedTexts = [];
+    const uncachedIndices = [];
+    
+    for (let i = 0; i < texts.length; i++) {
+        const cached = getCachedTranslation(texts[i], targetLanguage, 'qwen');
+        if (cached) {
+            translations[i] = cached;
+        } else {
+            uncachedTexts.push(texts[i]);
+            uncachedIndices.push(i);
+        }
+    }
+    
+    if (uncachedTexts.length === 0) {
+        return translations;
+    }
+    
+    const systemPrompt = customPrompt || getSystemPrompt(targetLanguage);
+    const userPrompt = uncachedTexts.join('\n---\n');
+    const model = modelName || 'qwen-plus';
+    
+    try {
+        // Qwen uses OpenAI-compatible API through DashScope
+        const response = await fetch('https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                temperature: 0.3,
+                max_tokens: 2000
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.choices && data.choices[0]) {
+            const translatedTexts = data.choices[0].message.content.split('\n---\n').map(t => t.trim());
+            
+            for (let i = 0; i < translatedTexts.length && i < uncachedTexts.length; i++) {
+                const translation = translatedTexts[i];
+                const originalText = uncachedTexts[i];
+                const index = uncachedIndices[i];
+                
+                translations[index] = translation;
+                setCachedTranslation(originalText, targetLanguage, 'qwen', translation);
+            }
+        } else {
+            for (let i = 0; i < uncachedIndices.length; i++) {
+                translations[uncachedIndices[i]] = uncachedTexts[i];
+            }
+        }
+        
+        return translations;
+    } catch (error) {
+        console.error('Qwen translation error:', error);
+        for (let i = 0; i < uncachedIndices.length; i++) {
+            translations[uncachedIndices[i]] = uncachedTexts[i];
+        }
+        return translations;
+    }
 }
 
 function getSystemPrompt(targetLanguage) {
