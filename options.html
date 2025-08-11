@@ -74,6 +74,21 @@
                     </label>
                     <small data-i18n="preserveOriginalDesc">Show both original and translated text</small>
                 </div>
+
+                <div class="setting-item">
+                    <label class="switch-label">
+                        <input type="checkbox" id="auto-prompt-translation">
+                        <span class="switch"></span>
+                        <span data-i18n="autoPromptTranslation">Auto-Prompt Translation</span>
+                    </label>
+                    <small data-i18n="autoPromptDesc">Automatically prompt to translate non-target language pages</small>
+                </div>
+
+                <div class="setting-item" id="site-preferences-section">
+                    <h3 data-i18n="sitePreferences">Site Translation Preferences</h3>
+                    <div id="site-preferences-list" style="margin: 10px 0; max-height: 200px; overflow-y: auto;"></div>
+                    <button id="clear-site-preferences" class="secondary-btn" data-i18n="clearSitePreferences">Clear All Site Preferences</button>
+                </div>
             </section>
 
             <!-- API Settings -->

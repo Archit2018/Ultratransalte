@@ -95,7 +95,13 @@ const translations = {
         asrApiKeyPlaceholder: 'Enter ASR API key',
         asrApiKeyDesc: 'Required for ASR functionality',
         videoSiteSettings: 'Site-Specific Settings',
-        siteSettingsDesc: 'Enable/disable for specific video platforms'
+        siteSettingsDesc: 'Enable/disable for specific video platforms',
+        autoPromptTranslation: 'Auto-Prompt Translation',
+        autoPromptDesc: 'Automatically prompt to translate non-target language pages',
+        sitePreferences: 'Site Translation Preferences',
+        clearSitePreferences: 'Clear All Site Preferences',
+        alwaysTranslate: 'Always translate',
+        neverTranslate: 'Never translate'
     },
     'zh-CN': {
         settingsTitle: '超级翻译 设置',
@@ -192,7 +198,13 @@ const translations = {
         asrApiKeyPlaceholder: '输入ASR API密钥',
         asrApiKeyDesc: 'ASR功能所需',
         videoSiteSettings: '站点特定设置',
-        siteSettingsDesc: '为特定视频平台启用/禁用'
+        siteSettingsDesc: '为特定视频平台启用/禁用',
+        autoPromptTranslation: '自动提示翻译',
+        autoPromptDesc: '自动提示翻译非目标语言页面',
+        sitePreferences: '网站翻译偏好',
+        clearSitePreferences: '清除所有网站偏好',
+        alwaysTranslate: '总是翻译',
+        neverTranslate: '永不翻译'
     }
 };
 
@@ -236,6 +248,16 @@ function setupEventListeners() {
     document.getElementById('target-language').addEventListener('change', saveSettings);
     document.getElementById('auto-translate').addEventListener('change', saveSettings);
     document.getElementById('preserve-original').addEventListener('change', saveSettings);
+    
+    // Auto-prompt settings
+    const autoPromptCheckbox = document.getElementById('auto-prompt-translation');
+    if (autoPromptCheckbox) {
+        autoPromptCheckbox.addEventListener('change', saveSettings);
+    }
+    const clearSitePrefsBtn = document.getElementById('clear-site-preferences');
+    if (clearSitePrefsBtn) {
+        clearSitePrefsBtn.addEventListener('click', clearSitePreferences);
+    }
     
     // API settings
     document.getElementById('translation-api').addEventListener('change', handleApiChange);
@@ -310,6 +332,15 @@ async function loadSettings() {
         document.getElementById('target-language').value = settings.targetLanguage || 'zh-CN';
         document.getElementById('auto-translate').checked = settings.autoTranslate || false;
         document.getElementById('preserve-original').checked = settings.preserveOriginal !== false;
+        
+        // Auto-prompt settings
+        const autoPromptCheckbox = document.getElementById('auto-prompt-translation');
+        if (autoPromptCheckbox) {
+            autoPromptCheckbox.checked = settings.autoPromptTranslation !== false;
+        }
+        
+        // Load site preferences
+        loadSitePreferences(settings.promptedSites || {});
         
         // API settings
         document.getElementById('translation-api').value = settings.translationApi || 'google';
@@ -401,6 +432,7 @@ async function saveSettings() {
         targetLanguage: document.getElementById('target-language').value,
         autoTranslate: document.getElementById('auto-translate').checked,
         preserveOriginal: document.getElementById('preserve-original').checked,
+        autoPromptTranslation: document.getElementById('auto-prompt-translation')?.checked !== false,
         
         // API
         translationApi: document.getElementById('translation-api').value,
@@ -686,6 +718,64 @@ async function saveVideoSettings() {
     } catch (error) {
         showStatus(getMessage('errorSaving'), 'error');
         console.error('Error saving video settings:', error);
+    }
+}
+
+// Load site preferences
+function loadSitePreferences(promptedSites) {
+    const listContainer = document.getElementById('site-preferences-list');
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = '';
+    
+    const sites = Object.entries(promptedSites);
+    if (sites.length === 0) {
+        listContainer.innerHTML = `<div style="color: #666; padding: 10px;">${getMessage('noSitePreferences') || 'No site preferences saved'}</div>`;
+        return;
+    }
+    
+    sites.forEach(([hostname, prefs]) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px; border-bottom: 1px solid #eee;';
+        
+        const siteInfo = document.createElement('div');
+        siteInfo.innerHTML = `
+            <strong>${hostname}</strong>
+            <span style="margin-left: 10px; color: ${prefs.action === 'always' ? '#10a37f' : '#666'};">
+                ${prefs.action === 'always' ? getMessage('alwaysTranslate') : getMessage('neverTranslate')}
+            </span>
+        `;
+        
+        const removeBtn = document.createElement('button');
+        removeBtn.textContent = '×';
+        removeBtn.style.cssText = 'border: none; background: #f0f0f0; color: #666; width: 24px; height: 24px; border-radius: 4px; cursor: pointer;';
+        removeBtn.onclick = () => removeSitePreference(hostname);
+        
+        item.appendChild(siteInfo);
+        item.appendChild(removeBtn);
+        listContainer.appendChild(item);
+    });
+}
+
+// Remove single site preference
+function removeSitePreference(hostname) {
+    chrome.storage.sync.get(['promptedSites'], (result) => {
+        const promptedSites = result.promptedSites || {};
+        delete promptedSites[hostname];
+        chrome.storage.sync.set({ promptedSites }, () => {
+            loadSitePreferences(promptedSites);
+            showStatus(`Removed preference for ${hostname}`, 'success');
+        });
+    });
+}
+
+// Clear all site preferences
+function clearSitePreferences() {
+    if (confirm('Are you sure you want to clear all site translation preferences?')) {
+        chrome.storage.sync.set({ promptedSites: {} }, () => {
+            loadSitePreferences({});
+            showStatus(getMessage('sitePreferencesCleared') || 'All site preferences cleared', 'success');
+        });
     }
 }
 

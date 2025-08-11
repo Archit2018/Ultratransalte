@@ -73,19 +73,28 @@ chrome.storage.sync.get({
     targetLanguage: 'zh-CN',
     preserveOriginal: true,
     autoTranslate: false,
-    interfaceLanguage: 'en'
+    interfaceLanguage: 'en',
+    autoPromptTranslation: true,
+    promptedSites: {}
 }, (settings) => {
     currentSettings = settings;
+    
+    // Auto translate if enabled
     if (settings.autoTranslate && shouldTranslatePage()) {
         setTimeout(() => translatePage(settings), 2000);
+    } 
+    // Auto prompt for translation on non-target language sites
+    else if (settings.autoPromptTranslation !== false && shouldPromptTranslation(settings)) {
+        setTimeout(() => showTranslationPrompt(settings), 1000);
     }
 });
 
 // Check if page should be translated
 function shouldTranslatePage() {
     // Skip if page is already in target language
-    const pageLang = document.documentElement.lang?.toLowerCase();
-    if (pageLang && pageLang.startsWith(currentSettings.targetLanguage.toLowerCase().substring(0, 2))) {
+    const pageLang = detectPageLanguage();
+    const targetLangCode = currentSettings.targetLanguage.toLowerCase().substring(0, 2);
+    if (pageLang && pageLang.startsWith(targetLangCode)) {
         return false;
     }
     
@@ -96,6 +105,553 @@ function shouldTranslatePage() {
     }
     
     return true;
+}
+
+// Check if should prompt for translation
+function shouldPromptTranslation(settings) {
+    // Don't prompt if auto-translate is on
+    if (settings.autoTranslate) return false;
+    
+    // Check if already prompted for this site
+    const currentHost = window.location.hostname;
+    if (settings.promptedSites && settings.promptedSites[currentHost]) {
+        const siteSettings = settings.promptedSites[currentHost];
+        // If user previously chose 'never' for this site, don't prompt
+        if (siteSettings.action === 'never') return false;
+        // If user chose 'always', auto-translate instead of prompting
+        if (siteSettings.action === 'always') {
+            setTimeout(() => translatePage(settings), 2000);
+            return false;
+        }
+    }
+    
+    // Check if page language differs from target language
+    const pageLang = detectPageLanguage();
+    const targetLangCode = settings.targetLanguage.toLowerCase().substring(0, 2);
+    
+    // Don't prompt if page is already in target language
+    if (pageLang && pageLang.startsWith(targetLangCode)) {
+        return false;
+    }
+    
+    // Check excluded sites
+    const excludedSites = settings.excludedSites?.split('\n').filter(s => s.trim());
+    if (excludedSites?.some(site => window.location.href.includes(site.trim()))) {
+        return false;
+    }
+    
+    // Only prompt if there's substantial text content
+    const textContent = document.body?.innerText || '';
+    if (textContent.length < 100) return false;
+    
+    return true;
+}
+
+// Improved language detection
+function detectPageLanguage() {
+    // Priority 1: HTML lang attribute
+    let pageLang = document.documentElement.lang?.toLowerCase();
+    if (pageLang) return pageLang.split('-')[0];
+    
+    // Priority 2: Meta language tags
+    const metaLang = document.querySelector('meta[http-equiv="content-language"]')?.content ||
+                     document.querySelector('meta[name="language"]')?.content;
+    if (metaLang) return metaLang.toLowerCase().split('-')[0];
+    
+    // Priority 3: Detect from text content
+    const sampleText = getSampleText();
+    if (sampleText) {
+        return detectLanguageFromText(sampleText);
+    }
+    
+    return null;
+}
+
+// Get sample text for language detection
+function getSampleText() {
+    // Get text from main content areas
+    const contentSelectors = [
+        'main', 'article', '[role="main"]', '#content', '.content',
+        'p', 'h1', 'h2', 'h3'
+    ];
+    
+    let sampleText = '';
+    for (const selector of contentSelectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const elem of elements) {
+            sampleText += elem.innerText + ' ';
+            if (sampleText.length > 500) break;
+        }
+        if (sampleText.length > 500) break;
+    }
+    
+    return sampleText.trim();
+}
+
+// Detect language from text content
+function detectLanguageFromText(text) {
+    if (!text) return null;
+    
+    // Common language patterns
+    const patterns = {
+        'zh': /[\u4e00-\u9fff\u3400-\u4dbf]/g, // Chinese
+        'ja': /[\u3040-\u309f\u30a0-\u30ff]/g, // Japanese
+        'ko': /[\uac00-\ud7af\u1100-\u11ff]/g, // Korean
+        'ar': /[\u0600-\u06ff\u0750-\u077f]/g, // Arabic
+        'ru': /[\u0400-\u04ff]/g, // Cyrillic
+        'he': /[\u0590-\u05ff]/g, // Hebrew
+        'th': /[\u0e00-\u0e7f]/g, // Thai
+        'hi': /[\u0900-\u097f]/g, // Hindi
+    };
+    
+    // Count matches for each language
+    const counts = {};
+    for (const [lang, pattern] of Object.entries(patterns)) {
+        const matches = text.match(pattern);
+        if (matches) {
+            counts[lang] = matches.length;
+        }
+    }
+    
+    // Find language with most matches
+    let maxCount = 0;
+    let detectedLang = null;
+    for (const [lang, count] of Object.entries(counts)) {
+        if (count > maxCount && count > text.length * 0.1) { // At least 10% of text
+            maxCount = count;
+            detectedLang = lang;
+        }
+    }
+    
+    // If no non-Latin script detected, check for Latin-based languages
+    if (!detectedLang) {
+        // Simple heuristic for common words
+        const langIndicators = {
+            'en': /\b(the|and|of|to|in|is|you|that|was|for)\b/gi,
+            'es': /\b(el|la|de|que|y|en|un|por|con|para)\b/gi,
+            'fr': /\b(le|de|et|la|les|des|un|une|pour|dans)\b/gi,
+            'de': /\b(der|die|und|das|den|von|zu|mit|sich|auf)\b/gi,
+            'pt': /\b(o|a|de|e|do|da|em|para|com|por)\b/gi,
+            'it': /\b(il|di|e|la|che|in|un|per|con|del)\b/gi,
+        };
+        
+        for (const [lang, pattern] of Object.entries(langIndicators)) {
+            const matches = text.match(pattern);
+            if (matches && matches.length > 5) {
+                counts[lang] = matches.length;
+            }
+        }
+        
+        // Find the best match
+        maxCount = 0;
+        for (const [lang, count] of Object.entries(counts)) {
+            if (count > maxCount) {
+                maxCount = count;
+                detectedLang = lang;
+            }
+        }
+    }
+    
+    return detectedLang;
+}
+
+// Show translation prompt
+function showTranslationPrompt(settings) {
+    // Don't show if already showing
+    if (document.querySelector('.ultra-translate-prompt')) return;
+    
+    // Get detected language name
+    const pageLang = detectPageLanguage();
+    const langNames = {
+        'zh': '中文',
+        'en': 'English',
+        'ja': '日本語',
+        'ko': '한국어',
+        'es': 'Español',
+        'fr': 'Français',
+        'de': 'Deutsch',
+        'ru': 'Русский',
+        'ar': 'العربية',
+        'pt': 'Português',
+        'it': 'Italiano',
+        'hi': 'हिन्दी',
+        'th': 'ไทย',
+        'he': 'עברית'
+    };
+    
+    const fromLang = langNames[pageLang] || pageLang || 'foreign language';
+    const targetLang = getLanguageName(settings.targetLanguage);
+    
+    // Create prompt container
+    const promptContainer = document.createElement('div');
+    promptContainer.className = 'ultra-translate-prompt';
+    promptContainer.innerHTML = `
+        <div class="ultra-translate-prompt-content">
+            <div class="ultra-translate-prompt-icon">🌐</div>
+            <div class="ultra-translate-prompt-text">
+                <div class="ultra-translate-prompt-title">
+                    ${getPromptText('title', settings.interfaceLanguage)}
+                </div>
+                <div class="ultra-translate-prompt-subtitle">
+                    ${getPromptText('detected', settings.interfaceLanguage)}: <strong>${fromLang}</strong> → <strong>${targetLang}</strong>
+                </div>
+            </div>
+            <div class="ultra-translate-prompt-actions">
+                <button class="ultra-translate-prompt-btn ultra-translate-prompt-translate">
+                    ${getPromptText('translate', settings.interfaceLanguage)}
+                </button>
+                <button class="ultra-translate-prompt-btn ultra-translate-prompt-always">
+                    ${getPromptText('always', settings.interfaceLanguage)}
+                </button>
+                <button class="ultra-translate-prompt-btn ultra-translate-prompt-never">
+                    ${getPromptText('never', settings.interfaceLanguage)}
+                </button>
+                <button class="ultra-translate-prompt-close">×</button>
+            </div>
+        </div>
+    `;
+    
+    // Add styles
+    const styles = `
+        .ultra-translate-prompt {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 2147483647;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            animation: ultra-translate-slide-in 0.3s ease-out;
+            max-width: 420px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+        
+        @keyframes ultra-translate-slide-in {
+            from {
+                transform: translateX(420px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .ultra-translate-prompt-content {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            gap: 12px;
+        }
+        
+        .ultra-translate-prompt-icon {
+            font-size: 32px;
+            flex-shrink: 0;
+        }
+        
+        .ultra-translate-prompt-text {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .ultra-translate-prompt-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+        
+        .ultra-translate-prompt-subtitle {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .ultra-translate-prompt-subtitle strong {
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .ultra-translate-prompt-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-left: 8px;
+        }
+        
+        .ultra-translate-prompt-btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .ultra-translate-prompt-translate {
+            background: #10a37f;
+            color: white;
+        }
+        
+        .ultra-translate-prompt-translate:hover {
+            background: #0d8968;
+        }
+        
+        .ultra-translate-prompt-always {
+            background: #e7f3ff;
+            color: #0066cc;
+        }
+        
+        .ultra-translate-prompt-always:hover {
+            background: #d0e5ff;
+        }
+        
+        .ultra-translate-prompt-never {
+            background: #f5f5f5;
+            color: #666;
+        }
+        
+        .ultra-translate-prompt-never:hover {
+            background: #e8e8e8;
+        }
+        
+        .ultra-translate-prompt-close {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            color: #999;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .ultra-translate-prompt-close:hover {
+            background: #f0f0f0;
+            color: #333;
+        }
+        
+        @media (max-width: 480px) {
+            .ultra-translate-prompt {
+                top: 10px;
+                right: 10px;
+                left: 10px;
+                max-width: none;
+            }
+            
+            .ultra-translate-prompt-content {
+                padding: 12px;
+            }
+            
+            .ultra-translate-prompt-actions {
+                flex-direction: row;
+                flex-wrap: wrap;
+            }
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .ultra-translate-prompt {
+                background: #2a2a2a;
+                border-color: rgba(255, 255, 255, 0.1);
+            }
+            
+            .ultra-translate-prompt-title {
+                color: #f0f0f0;
+            }
+            
+            .ultra-translate-prompt-subtitle {
+                color: #aaa;
+            }
+            
+            .ultra-translate-prompt-subtitle strong {
+                color: #ddd;
+            }
+            
+            .ultra-translate-prompt-never {
+                background: #3a3a3a;
+                color: #ccc;
+            }
+            
+            .ultra-translate-prompt-never:hover {
+                background: #444;
+            }
+            
+            .ultra-translate-prompt-close:hover {
+                background: #3a3a3a;
+                color: #f0f0f0;
+            }
+        }
+    `;
+    
+    // Add styles to page
+    const styleSheet = document.createElement('style');
+    styleSheet.textContent = styles;
+    document.head.appendChild(styleSheet);
+    
+    // Add prompt to page
+    document.body.appendChild(promptContainer);
+    
+    // Add event listeners
+    const translateBtn = promptContainer.querySelector('.ultra-translate-prompt-translate');
+    const alwaysBtn = promptContainer.querySelector('.ultra-translate-prompt-always');
+    const neverBtn = promptContainer.querySelector('.ultra-translate-prompt-never');
+    const closeBtn = promptContainer.querySelector('.ultra-translate-prompt-close');
+    
+    translateBtn.addEventListener('click', () => {
+        removePrompt();
+        translatePage(settings);
+    });
+    
+    alwaysBtn.addEventListener('click', () => {
+        saveSitePreference('always');
+        removePrompt();
+        translatePage(settings);
+    });
+    
+    neverBtn.addEventListener('click', () => {
+        saveSitePreference('never');
+        removePrompt();
+    });
+    
+    closeBtn.addEventListener('click', () => {
+        removePrompt();
+    });
+    
+    // Auto-hide after 30 seconds
+    setTimeout(() => {
+        removePrompt();
+    }, 30000);
+    
+    function removePrompt() {
+        promptContainer.style.animation = 'ultra-translate-slide-out 0.3s ease-in';
+        setTimeout(() => {
+            promptContainer.remove();
+        }, 300);
+    }
+    
+    // Add slide-out animation
+    const slideOutStyle = document.createElement('style');
+    slideOutStyle.textContent = `
+        @keyframes ultra-translate-slide-out {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(420px);
+                opacity: 0;
+            }
+        }
+    `;
+    document.head.appendChild(slideOutStyle);
+}
+
+// Get prompt text in appropriate language
+function getPromptText(key, interfaceLang = 'en') {
+    const texts = {
+        'en': {
+            title: 'Translate this page?',
+            detected: 'Detected',
+            translate: 'Translate',
+            always: 'Always',
+            never: 'Never'
+        },
+        'zh-CN': {
+            title: '翻译此页面？',
+            detected: '检测到',
+            translate: '翻译',
+            always: '总是翻译',
+            never: '永不翻译'
+        },
+        'zh-TW': {
+            title: '翻譯此頁面？',
+            detected: '偵測到',
+            translate: '翻譯',
+            always: '總是翻譯',
+            never: '永不翻譯'
+        },
+        'ja': {
+            title: 'このページを翻訳しますか？',
+            detected: '検出された',
+            translate: '翻訳',
+            always: '常に翻訳',
+            never: '翻訳しない'
+        },
+        'ko': {
+            title: '이 페이지를 번역하시겠습니까?',
+            detected: '감지됨',
+            translate: '번역',
+            always: '항상 번역',
+            never: '번역 안 함'
+        },
+        'es': {
+            title: '¿Traducir esta página?',
+            detected: 'Detectado',
+            translate: 'Traducir',
+            always: 'Siempre',
+            never: 'Nunca'
+        },
+        'fr': {
+            title: 'Traduire cette page?',
+            detected: 'Détecté',
+            translate: 'Traduire',
+            always: 'Toujours',
+            never: 'Jamais'
+        },
+        'de': {
+            title: 'Diese Seite übersetzen?',
+            detected: 'Erkannt',
+            translate: 'Übersetzen',
+            always: 'Immer',
+            never: 'Niemals'
+        },
+        'ru': {
+            title: 'Перевести эту страницу?',
+            detected: 'Обнаружен',
+            translate: 'Перевести',
+            always: 'Всегда',
+            never: 'Никогда'
+        }
+    };
+    
+    return texts[interfaceLang]?.[key] || texts['en'][key];
+}
+
+// Save site preference
+function saveSitePreference(action) {
+    const currentHost = window.location.hostname;
+    chrome.storage.sync.get(['promptedSites'], (result) => {
+        const promptedSites = result.promptedSites || {};
+        promptedSites[currentHost] = {
+            action: action,
+            timestamp: Date.now()
+        };
+        chrome.storage.sync.set({ promptedSites });
+    });
+}
+
+// Get language name
+function getLanguageName(code) {
+    const languages = {
+        'zh-CN': '简体中文',
+        'zh-TW': '繁體中文',
+        'en': 'English',
+        'es': 'Español',
+        'fr': 'Français',
+        'de': 'Deutsch',
+        'ja': '日本語',
+        'ko': '한국어',
+        'ru': 'Русский',
+        'ar': 'العربية'
+    };
+    return languages[code] || code;
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -172,6 +728,10 @@ async function translatePage(settings) {
         await delay(50); // Reduced delay for better performance
     }
     
+    // Translate form elements and attributes
+    await translateFormElements(settings);
+    await translateAttributes(settings);
+    
     // Remove loading indicator
     removeLoadingIndicator();
     isTranslating = false;
@@ -196,7 +756,7 @@ function getTextNodes(element) {
                     'script', 'style', 'noscript', 'iframe', 'object', 'embed',
                     'pre', 'code', 'kbd', 'samp', 'var', // Code-related elements
                     'math', 'svg', 'canvas', // Technical elements
-                    'textarea', 'input', 'select', 'option' // Form elements
+                    'textarea', 'input' // Form input elements (but keep select/option for translation)
                 ];
                 if (skipTags.includes(tagName)) {
                     return NodeFilter.FILTER_REJECT;
@@ -450,6 +1010,134 @@ async function sendTranslationRequest(texts, settings) {
     });
 }
 
+// Translate form elements (select options, buttons, labels)
+async function translateFormElements(settings) {
+    // Translate select options
+    const options = document.querySelectorAll('option');
+    const optionTexts = [];
+    const optionElements = [];
+    
+    options.forEach(option => {
+        const text = option.textContent.trim();
+        if (text && text.length > 1 && !translatedNodes.has(option)) {
+            optionTexts.push(text);
+            optionElements.push(option);
+        }
+    });
+    
+    // Translate button texts
+    const buttons = document.querySelectorAll('button, input[type="button"], input[type="submit"], input[type="reset"]');
+    const buttonTexts = [];
+    const buttonElements = [];
+    
+    buttons.forEach(button => {
+        const text = button.textContent?.trim() || button.value?.trim();
+        if (text && text.length > 1 && !translatedNodes.has(button)) {
+            buttonTexts.push(text);
+            buttonElements.push(button);
+        }
+    });
+    
+    // Translate labels
+    const labels = document.querySelectorAll('label');
+    const labelTexts = [];
+    const labelElements = [];
+    
+    labels.forEach(label => {
+        const text = label.textContent.trim();
+        if (text && text.length > 1 && !translatedNodes.has(label) && !label.querySelector('input, select, textarea')) {
+            labelTexts.push(text);
+            labelElements.push(label);
+        }
+    });
+    
+    // Combine all texts for batch translation
+    const allTexts = [...optionTexts, ...buttonTexts, ...labelTexts];
+    const allElements = [...optionElements, ...buttonElements, ...labelElements];
+    
+    if (allTexts.length > 0) {
+        const translations = await sendTranslationRequest(allTexts, settings);
+        
+        // Apply translations
+        allElements.forEach((element, index) => {
+            if (translations[index]) {
+                if (element.tagName === 'OPTION') {
+                    element.textContent = translations[index];
+                    translatedNodes.add(element);
+                } else if (element.tagName === 'INPUT') {
+                    element.value = translations[index];
+                    translatedNodes.add(element);
+                } else if (element.tagName === 'BUTTON' || element.tagName === 'LABEL') {
+                    // For buttons and labels, preserve child elements
+                    const children = Array.from(element.childNodes);
+                    const textNode = children.find(node => node.nodeType === Node.TEXT_NODE);
+                    if (textNode) {
+                        textNode.textContent = translations[index];
+                    } else {
+                        element.textContent = translations[index];
+                    }
+                    translatedNodes.add(element);
+                }
+            }
+        });
+    }
+}
+
+// Translate attributes (title, placeholder, alt)
+async function translateAttributes(settings) {
+    const elementsWithTitle = document.querySelectorAll('[title]');
+    const elementsWithPlaceholder = document.querySelectorAll('[placeholder]');
+    const elementsWithAlt = document.querySelectorAll('[alt]');
+    
+    const attributeTexts = [];
+    const attributeInfo = [];
+    
+    // Collect title attributes
+    elementsWithTitle.forEach(elem => {
+        const title = elem.getAttribute('title')?.trim();
+        if (title && title.length > 1) {
+            attributeTexts.push(title);
+            attributeInfo.push({ element: elem, attribute: 'title', originalValue: title });
+        }
+    });
+    
+    // Collect placeholder attributes
+    elementsWithPlaceholder.forEach(elem => {
+        const placeholder = elem.getAttribute('placeholder')?.trim();
+        if (placeholder && placeholder.length > 1) {
+            attributeTexts.push(placeholder);
+            attributeInfo.push({ element: elem, attribute: 'placeholder', originalValue: placeholder });
+        }
+    });
+    
+    // Collect alt attributes
+    elementsWithAlt.forEach(elem => {
+        const alt = elem.getAttribute('alt')?.trim();
+        if (alt && alt.length > 1) {
+            attributeTexts.push(alt);
+            attributeInfo.push({ element: elem, attribute: 'alt', originalValue: alt });
+        }
+    });
+    
+    if (attributeTexts.length > 0) {
+        const translations = await sendTranslationRequest(attributeTexts, settings);
+        
+        // Apply translated attributes
+        attributeInfo.forEach((info, index) => {
+            if (translations[index]) {
+                info.element.setAttribute(info.attribute, translations[index]);
+                // Store original value for restoration
+                if (!info.element.dataset.originalAttributes) {
+                    info.element.dataset.originalAttributes = JSON.stringify({});
+                }
+                const originalAttrs = JSON.parse(info.element.dataset.originalAttributes);
+                originalAttrs[info.attribute] = info.originalValue;
+                info.element.dataset.originalAttributes = JSON.stringify(originalAttrs);
+            }
+        });
+    }
+}
+
 function applyTranslation(textNode, translation, preserveOriginal) {
     if (!translation || translation === textNode.nodeValue.trim()) return;
     
@@ -585,15 +1273,21 @@ function debounce(func, wait) {
 }
 
 // Throttled translation for mutation observer
-const throttledTranslate = debounce(() => {
+const throttledTranslate = debounce(async () => {
     if (!currentSettings.autoTranslate || isTranslating) return;
     
     const newTextNodes = getTextNodes(document.body);
     if (newTextNodes.length > 0) {
         const optimizedBatches = createOptimizedBatches(newTextNodes, currentSettings);
-        optimizedBatches.forEach(batch => translateBatch(batch, currentSettings));
+        for (const batch of optimizedBatches) {
+            await translateBatch(batch, currentSettings);
+        }
     }
-}, 1500);
+    
+    // Also translate any new form elements and attributes
+    await translateFormElements(currentSettings);
+    await translateAttributes(currentSettings);
+}, 800); // Reduced debounce time for faster response
 
 // Function to restore original text
 function restoreOriginalText(element) {
@@ -605,6 +1299,20 @@ function restoreOriginalText(element) {
             const textNode = document.createTextNode(originalText);
             elem.parentNode?.replaceChild(textNode, elem);
             originalTextMap.delete(elem);
+        }
+    });
+    
+    // Restore original attributes
+    const elementsWithOriginalAttributes = element.querySelectorAll('[data-original-attributes]');
+    elementsWithOriginalAttributes.forEach(elem => {
+        try {
+            const originalAttrs = JSON.parse(elem.dataset.originalAttributes);
+            Object.entries(originalAttrs).forEach(([attr, value]) => {
+                elem.setAttribute(attr, value);
+            });
+            delete elem.dataset.originalAttributes;
+        } catch (e) {
+            console.error('Error restoring attributes:', e);
         }
     });
     
@@ -624,25 +1332,46 @@ function toggleTranslation() {
 const observer = new MutationObserver((mutations) => {
     if (!currentSettings.autoTranslate) return;
     
-    let hasNewText = false;
+    let hasNewContent = false;
     mutations.forEach((mutation) => {
         if (mutation.type === 'childList') {
             mutation.addedNodes.forEach((node) => {
-                if (node.nodeType === Node.TEXT_NODE || 
-                    (node.nodeType === Node.ELEMENT_NODE && node.textContent?.trim())) {
+                if (node.nodeType === Node.TEXT_NODE) {
+                    const text = node.textContent?.trim();
+                    if (text && text.length > 1) {
+                        hasNewContent = true;
+                    }
+                } else if (node.nodeType === Node.ELEMENT_NODE) {
                     // Skip if already translated
                     if (node.classList && 
                         (node.classList.contains('ultra-translate-wrapper') || 
                          node.classList.contains('ultra-translate-translated'))) {
                         return;
                     }
-                    hasNewText = true;
+                    
+                    // Check for text content or form elements
+                    if (node.textContent?.trim() || 
+                        node.tagName === 'SELECT' || 
+                        node.tagName === 'OPTION' ||
+                        node.tagName === 'BUTTON' ||
+                        node.tagName === 'LABEL' ||
+                        node.querySelector && node.querySelector('select, option, button, label, [title], [placeholder], [alt]')) {
+                        hasNewContent = true;
+                    }
                 }
             });
+        } else if (mutation.type === 'attributes') {
+            // Check for dynamically added attributes
+            if (mutation.attributeName === 'title' || 
+                mutation.attributeName === 'placeholder' || 
+                mutation.attributeName === 'alt' ||
+                mutation.attributeName === 'value') {
+                hasNewContent = true;
+            }
         }
     });
     
-    if (hasNewText) {
+    if (hasNewContent) {
         throttledTranslate();
     }
 });
@@ -1242,5 +1971,7 @@ videoMutationObserver.observe(document.body, {
 
 observer.observe(document.body, {
     childList: true,
-    subtree: true
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['title', 'placeholder', 'alt', 'value']
 });
