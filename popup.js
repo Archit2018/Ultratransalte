@@ -483,29 +483,39 @@ async function translateCurrentPage() {
         modelName: '',
         customPrompt: ''
     });
-    
+
     if (settings.translationApi !== 'google' && !settings.apiKey) {
         showStatus(getMessage('enterApiKey'), 'error');
         return;
     }
-    
+
     // Show loading state in button
     const translateBtn = document.getElementById('translate-now');
     const originalText = translateBtn.textContent;
     translateBtn.textContent = '⏳ ' + getMessage('translationStarted');
     translateBtn.disabled = true;
-    
-    chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        if (tabs[0]?.id) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-                action: 'translatePage',
-                settings: settings
-            }, (response) => {
-                if (chrome.runtime.lastError) {
-                    showStatus(getMessage('refreshPage'), 'error');
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTabId = (tabs && tabs[0]) ? tabs[0].id : null;
+        if (!activeTabId) {
+            showStatus(getMessage('refreshPage'), 'error');
+            translateBtn.textContent = originalText;
+            translateBtn.disabled = false;
+            return;
+        }
+
+        chrome.tabs.sendMessage(activeTabId, {
+            action: 'translatePage',
+            settings: settings
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                showStatus(getMessage('refreshPage'), 'error');
                 translateBtn.textContent = originalText;
                 translateBtn.disabled = false;
-            } else if (response && response.success) {
+                return;
+            }
+
+            if (response && response.success) {
                 showStatus(getMessage('translationStarted'), 'success');
                 // Keep the button disabled and show progress
                 translateBtn.textContent = '✓ ' + getMessage('translationStarted');
