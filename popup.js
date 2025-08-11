@@ -404,19 +404,31 @@ async function saveQuickSettings() {
         await chrome.storage.sync.set(settings);
         
         chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, {
-                action: 'updateSettings',
-                settings: settings
-            });
-            
-            // Send video settings update if changed
-            if ('videoSubtitles' in settings) {
+            if (tabs[0]?.id) {
                 chrome.tabs.sendMessage(tabs[0].id, {
-                    action: 'updateVideoSettings',
-                    settings: {
-                        enabled: settings.videoSubtitles
+                    action: 'updateSettings',
+                    settings: settings
+                }, () => {
+                    // Handle any errors silently
+                    if (chrome.runtime.lastError) {
+                        console.debug('Settings update:', chrome.runtime.lastError.message);
                     }
                 });
+                
+                // Send video settings update if changed
+                if ('videoSubtitles' in settings) {
+                    chrome.tabs.sendMessage(tabs[0].id, {
+                        action: 'updateVideoSettings',
+                        settings: {
+                            enabled: settings.videoSubtitles
+                        }
+                    }, () => {
+                        // Handle any errors silently
+                        if (chrome.runtime.lastError) {
+                            console.debug('Video settings update:', chrome.runtime.lastError.message);
+                        }
+                    });
+                }
             }
         });
     } catch (error) {
@@ -484,12 +496,13 @@ async function translateCurrentPage() {
     translateBtn.disabled = true;
     
     chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, {
-            action: 'translatePage',
-            settings: settings
-        }, (response) => {
-            if (chrome.runtime.lastError) {
-                showStatus(getMessage('refreshPage'), 'error');
+        if (tabs[0]?.id) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'translatePage',
+                settings: settings
+            }, (response) => {
+                if (chrome.runtime.lastError) {
+                    showStatus(getMessage('refreshPage'), 'error');
                 translateBtn.textContent = originalText;
                 translateBtn.disabled = false;
             } else if (response && response.success) {
@@ -526,12 +539,20 @@ async function stopTranslation() {
     stopBtn.disabled = true;
     
     chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, {
-            action: 'stopTranslation'
-        }, (response) => {
-            if (response && response.success) {
-                showStatus('Translation stopped', 'success');
-                stopBtn.textContent = '✓ Stopped';
+        if (tabs[0]?.id) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+                action: 'stopTranslation'
+            }, (response) => {
+                // Check for runtime errors
+                if (chrome.runtime.lastError) {
+                    console.debug('Stop translation:', chrome.runtime.lastError.message);
+                    showStatus(getMessage('refreshPage'), 'error');
+                    return;
+                }
+                
+                if (response && response.success) {
+                    showStatus('Translation stopped', 'success');
+                    stopBtn.textContent = '✓ Stopped';
                 
                 // Re-enable translate button
                 const translateBtn = document.getElementById('translate-now');

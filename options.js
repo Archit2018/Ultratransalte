@@ -605,6 +605,12 @@ function handleOpacityChange() {
 // Update cache size
 async function updateCacheSize() {
     chrome.runtime.sendMessage({ action: 'getCacheSize' }, (response) => {
+        // Check for runtime errors
+        if (chrome.runtime.lastError) {
+            console.debug('Cache size update:', chrome.runtime.lastError.message);
+            return;
+        }
+        
         if (response && response.size !== undefined) {
             document.getElementById('cache-size').textContent = response.size;
         }
@@ -614,6 +620,13 @@ async function updateCacheSize() {
 // Clear cache
 async function clearCache() {
     chrome.runtime.sendMessage({ action: 'clearCache' }, (response) => {
+        // Check for runtime errors
+        if (chrome.runtime.lastError) {
+            console.debug('Clear cache:', chrome.runtime.lastError.message);
+            showStatus(getMessage('errorSaving'), 'error');
+            return;
+        }
+        
         if (response && response.success) {
             showStatus(getMessage('cacheCleared'), 'success');
             updateCacheSize();
@@ -701,16 +714,24 @@ async function saveVideoSettings() {
         // Send update to content scripts
         chrome.tabs.query({}, (tabs) => {
             tabs.forEach(tab => {
-                chrome.tabs.sendMessage(tab.id, {
-                    action: 'updateVideoSettings',
-                    settings: {
-                        enabled: settings.videoSubtitles,
-                        mode: settings.videoSubtitleMode,
-                        bilingualMode: settings.videoBilingualMode,
-                        asrProvider: settings.asrProvider,
-                        latencyMode: settings.asrLatency
-                    }
-                }).catch(() => {}); // Ignore errors for tabs without content script
+                if (tab.id) {
+                    chrome.tabs.sendMessage(tab.id, {
+                        action: 'updateVideoSettings',
+                        settings: {
+                            enabled: settings.videoSubtitles,
+                            mode: settings.videoSubtitleMode,
+                            bilingualMode: settings.videoBilingualMode,
+                            asrProvider: settings.asrProvider,
+                            latencyMode: settings.asrLatency
+                        }
+                    }, () => {
+                        // Handle errors silently
+                        if (chrome.runtime.lastError) {
+                            // Expected for tabs without content script
+                            console.debug('Tab update skipped:', tab.id, chrome.runtime.lastError.message);
+                        }
+                    });
+                }
             });
         });
         

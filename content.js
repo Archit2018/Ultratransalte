@@ -732,6 +732,13 @@ async function translatePage(settings) {
     // Remove loading indicator
     removeLoadingIndicator();
     isTranslating = false;
+
+    // Best-effort pass to ensure dynamic UI (nav/dropdowns) are also translated once after full pass
+    try {
+        await translateDynamicElements(settings);
+    } catch (e) {
+        // no-op
+    }
 }
 
 function getTextNodes(element) {
@@ -966,12 +973,22 @@ function getContextKey(element) {
     // Group by parent element and its position
     const tag = element.tagName?.toLowerCase() || 'unknown';
     const id = element.id ? `#${element.id}` : '';
-    const className = element.className ? `.${element.className.split(' ')[0]}` : '';
+    
+    // Handle className safely (for SVG elements, className is an object, not a string)
+    let classNameStr = '';
+    if (element.className) {
+        if (typeof element.className === 'string') {
+            classNameStr = `.${element.className.split(' ')[0]}`;
+        } else if (element.className.baseVal !== undefined) {
+            // SVG element
+            classNameStr = element.className.baseVal ? `.${element.className.baseVal.split(' ')[0]}` : '';
+        }
+    }
     
     // Include parent's parent for better context
     const parentTag = element.parentElement?.tagName?.toLowerCase() || '';
     
-    return `${parentTag}>${tag}${id}${className}`;
+    return `${parentTag}>${tag}${id}${classNameStr}`;
 }
 
 async function translateBatch(nodes, settings) {
@@ -993,17 +1010,29 @@ async function translateBatch(nodes, settings) {
 
 async function sendTranslationRequest(texts, settings) {
     return new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-            action: 'translate',
-            texts: texts,
-            settings: settings
-        }, (response) => {
-            if (response && response.translations) {
-                resolve(response.translations);
-            } else {
-                resolve(texts.map(() => ''));
-            }
-        });
+        try {
+            chrome.runtime.sendMessage({
+                action: 'translate',
+                texts: texts,
+                settings: settings
+            }, (response) => {
+                // Check for runtime errors
+                if (chrome.runtime.lastError) {
+                    console.warn('Translation request error:', chrome.runtime.lastError);
+                    resolve(texts.map(() => ''));
+                    return;
+                }
+                
+                if (response && response.translations) {
+                    resolve(response.translations);
+                } else {
+                    resolve(texts.map(() => ''));
+                }
+            });
+        } catch (error) {
+            console.warn('Failed to send translation request:', error);
+            resolve(texts.map(() => ''));
+        }
     });
 }
 
