@@ -5,6 +5,8 @@ let currentSettings = {};
 const originalTextMap = new WeakMap();
 // Cache for computed styles to improve performance
 const computedStyleCache = new WeakMap();
+// Enable realtime translation after a manual translate, even if autoTranslate is off
+let manualRealtimeEnabled = false;
 
 // RTL languages list
 const RTL_LANGUAGES = ['ar', 'he', 'fa', 'ur', 'yi', 'ji', 'iw', 'ku', 'ms', 'ml'];
@@ -702,6 +704,8 @@ async function translatePage(settings) {
     }
     
     isTranslating = true;
+    // Allow realtime incremental translation after manual trigger
+    manualRealtimeEnabled = true;
     
     // Create loading indicator
     createLoadingIndicator();
@@ -1429,7 +1433,7 @@ function debounce(func, wait) {
 
 // Throttled translation for mutation observer
 const throttledTranslate = debounce(async () => {
-    if (!currentSettings.autoTranslate || isTranslating) return;
+    if (!(currentSettings.autoTranslate || manualRealtimeEnabled) || isTranslating) return;
     
     const newTextNodes = getTextNodes(document.body);
     if (newTextNodes.length > 0) {
@@ -1482,13 +1486,14 @@ function restoreOriginalText(element) {
 function toggleTranslation() {
     if (document.querySelector('.ultra-translate-wrapper, .ultra-translate-translated')) {
         restoreOriginalText(document.body);
+        manualRealtimeEnabled = false; // stop realtime when user restores
     } else {
         translatePage(currentSettings);
     }
 }
 
 const observer = new MutationObserver((mutations) => {
-    if (!currentSettings.autoTranslate) return;
+    if (!(currentSettings.autoTranslate || manualRealtimeEnabled)) return;
     
     let hasNewContent = false;
     mutations.forEach((mutation) => {
@@ -2154,7 +2159,7 @@ observer.observe(document.body, {
 
 // Add event listeners for interactions that might reveal hidden content
 document.addEventListener('click', (e) => {
-    if (!currentSettings.autoTranslate) return;
+    if (!(currentSettings.autoTranslate || manualRealtimeEnabled)) return;
     
     // Delay to allow dropdown/menu to fully render
     setTimeout(() => {
@@ -2163,7 +2168,7 @@ document.addEventListener('click', (e) => {
 }, true);
 
 document.addEventListener('mouseenter', (e) => {
-    if (!currentSettings.autoTranslate) return;
+    if (!(currentSettings.autoTranslate || manualRealtimeEnabled)) return;
     
     // Check if hovering over elements that typically show dropdowns
     const target = e.target;
@@ -2177,7 +2182,7 @@ document.addEventListener('mouseenter', (e) => {
 
 // Handle focus events for keyboard navigation
 document.addEventListener('focus', (e) => {
-    if (!currentSettings.autoTranslate) return;
+    if (!(currentSettings.autoTranslate || manualRealtimeEnabled)) return;
     
     const target = e.target;
     if (target.matches && target.matches('select, input, button, [role="combobox"], [role="listbox"]')) {
