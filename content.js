@@ -15,16 +15,16 @@ function createLoadingIndicator() {
     
     // Get loading text based on interface language
     const loadingTexts = {
-        'en': 'Translating...',
-        'zh-CN': '正在翻译...',
-        'zh-TW': '正在翻譯...',
-        'ja': '翻訳中...',
-        'ko': '번역 중...',
-        'es': 'Traduciendo...',
-        'fr': 'Traduction...',
-        'de': 'Übersetzen...',
-        'ru': 'Перевод...',
-        'ar': 'جارٍ الترجمة...'
+        'en': 'Translating',
+        'zh-CN': '翻译中',
+        'zh-TW': '翻譯中',
+        'ja': '翻訳中',
+        'ko': '번역 중',
+        'es': 'Traduciendo',
+        'fr': 'Traduction',
+        'de': 'Übersetzen',
+        'ru': 'Перевод',
+        'ar': 'الترجمة'
     };
     
     const interfaceLang = currentSettings.interfaceLanguage || 'en';
@@ -33,12 +33,9 @@ function createLoadingIndicator() {
     loadingIndicator = document.createElement('div');
     loadingIndicator.className = 'ultra-translate-loading';
     loadingIndicator.innerHTML = `
-        <div class="ultra-translate-loading-content">
-            <div class="ultra-translate-spinner"></div>
-            <div class="ultra-translate-loading-text">
-                <span class="ultra-translate-loading-title">${loadingText}</span>
-                <span class="ultra-translate-loading-progress">0%</span>
-            </div>
+        <div class="ultra-translate-loading-compact">
+            <span class="ultra-translate-loading-text">${loadingText}</span>
+            <span class="ultra-translate-loading-progress">0%</span>
             <div class="ultra-translate-loading-bar">
                 <div class="ultra-translate-loading-bar-fill"></div>
             </div>
@@ -1083,6 +1080,133 @@ async function translateFormElements(settings) {
     }
 }
 
+// Translate dynamic dropdown and navigation elements
+async function translateDynamicElements(settings) {
+    // Find dropdown menus and navigation items that might be dynamically shown
+    const dynamicSelectors = [
+        // Common dropdown and menu selectors
+        '.dropdown-menu:not(.ultra-translate-processed)',
+        '.dropdown-content:not(.ultra-translate-processed)',
+        '.submenu:not(.ultra-translate-processed)',
+        '.sub-menu:not(.ultra-translate-processed)',
+        '.nav-dropdown:not(.ultra-translate-processed)',
+        '.navbar-dropdown:not(.ultra-translate-processed)',
+        '[role="menu"]:not(.ultra-translate-processed)',
+        '[role="listbox"]:not(.ultra-translate-processed)',
+        '.popover:not(.ultra-translate-processed)',
+        '.tooltip:not(.ultra-translate-processed)',
+        '.modal-content:not(.ultra-translate-processed)',
+        '.dialog-content:not(.ultra-translate-processed)',
+        // Material UI / Bootstrap / common frameworks
+        '.MuiMenu-list:not(.ultra-translate-processed)',
+        '.MuiSelect-menu:not(.ultra-translate-processed)',
+        '.ant-dropdown-menu:not(.ultra-translate-processed)',
+        '.ant-select-dropdown:not(.ultra-translate-processed)',
+        '.dropdown.show:not(.ultra-translate-processed)',
+        '.collapse.show:not(.ultra-translate-processed)',
+        // Navigation specific
+        'nav ul:not(.ultra-translate-processed)',
+        'nav li:not(.ultra-translate-processed)',
+        '.navigation-menu:not(.ultra-translate-processed)',
+        '.nav-menu:not(.ultra-translate-processed)',
+        // Elements that are shown on hover or click
+        '[aria-expanded="true"]:not(.ultra-translate-processed)',
+        '[data-toggle="dropdown"]:not(.ultra-translate-processed)',
+        '.is-open:not(.ultra-translate-processed)',
+        '.is-active:not(.ultra-translate-processed)',
+        '.show:not(.ultra-translate-processed)',
+        '.active:not(.ultra-translate-processed)',
+        '.open:not(.ultra-translate-processed)',
+        '.visible:not(.ultra-translate-processed)'
+    ];
+    
+    for (const selector of dynamicSelectors) {
+        try {
+            const elements = document.querySelectorAll(selector);
+            for (const element of elements) {
+                // Mark as processed to avoid re-translation
+                element.classList.add('ultra-translate-processed');
+                
+                // Get text nodes within this dynamic element
+                const textNodes = getTextNodes(element);
+                if (textNodes.length > 0) {
+                    const batches = createOptimizedBatches(textNodes, settings);
+                    for (const batch of batches) {
+                        await translateBatch(batch, settings);
+                    }
+                }
+                
+                // Also translate form elements within dynamic content
+                const formElements = element.querySelectorAll('button, option, label, [title], [placeholder], [aria-label]');
+                if (formElements.length > 0) {
+                    await translateFormElementsInContainer(element, settings);
+                }
+            }
+        } catch (error) {
+            // Silently continue if selector fails
+            continue;
+        }
+    }
+}
+
+// Helper function to translate form elements within a specific container
+async function translateFormElementsInContainer(container, settings) {
+    const options = container.querySelectorAll('option');
+    const buttons = container.querySelectorAll('button, input[type="button"], input[type="submit"]');
+    const labels = container.querySelectorAll('label');
+    const ariaLabels = container.querySelectorAll('[aria-label]');
+    
+    const texts = [];
+    const elements = [];
+    
+    // Collect texts from all elements
+    options.forEach(opt => {
+        if (!translatedNodes.has(opt) && opt.textContent?.trim()) {
+            texts.push(opt.textContent.trim());
+            elements.push({ elem: opt, type: 'option' });
+        }
+    });
+    
+    buttons.forEach(btn => {
+        const text = btn.textContent?.trim() || btn.value?.trim();
+        if (!translatedNodes.has(btn) && text) {
+            texts.push(text);
+            elements.push({ elem: btn, type: 'button' });
+        }
+    });
+    
+    labels.forEach(lbl => {
+        if (!translatedNodes.has(lbl) && lbl.textContent?.trim()) {
+            texts.push(lbl.textContent.trim());
+            elements.push({ elem: lbl, type: 'label' });
+        }
+    });
+    
+    ariaLabels.forEach(elem => {
+        const ariaLabel = elem.getAttribute('aria-label');
+        if (ariaLabel && !elem.dataset.originalAriaLabel) {
+            texts.push(ariaLabel);
+            elements.push({ elem: elem, type: 'aria-label', originalValue: ariaLabel });
+        }
+    });
+    
+    if (texts.length > 0) {
+        const translations = await sendTranslationRequest(texts, settings);
+        
+        elements.forEach((item, index) => {
+            if (translations[index]) {
+                if (item.type === 'option' || item.type === 'button' || item.type === 'label') {
+                    item.elem.textContent = translations[index];
+                    translatedNodes.add(item.elem);
+                } else if (item.type === 'aria-label') {
+                    item.elem.dataset.originalAriaLabel = item.originalValue;
+                    item.elem.setAttribute('aria-label', translations[index]);
+                }
+            }
+        });
+    }
+}
+
 // Translate attributes (title, placeholder, alt)
 async function translateAttributes(settings) {
     const elementsWithTitle = document.querySelectorAll('[title]');
@@ -1289,7 +1413,10 @@ const throttledTranslate = debounce(async () => {
     // Also translate any new form elements and attributes
     await translateFormElements(currentSettings);
     await translateAttributes(currentSettings);
-}, 800); // Reduced debounce time for faster response
+    
+    // Translate dynamic dropdown and navigation elements
+    await translateDynamicElements(currentSettings);
+}, 500); // Reduced debounce time for faster response
 
 // Function to restore original text
 function restoreOriginalText(element) {
@@ -1363,12 +1490,23 @@ const observer = new MutationObserver((mutations) => {
                 }
             });
         } else if (mutation.type === 'attributes') {
-            // Check for dynamically added attributes
+            // Check for dynamically added attributes or visibility changes
             if (mutation.attributeName === 'title' || 
                 mutation.attributeName === 'placeholder' || 
                 mutation.attributeName === 'alt' ||
-                mutation.attributeName === 'value') {
-                hasNewContent = true;
+                mutation.attributeName === 'value' ||
+                mutation.attributeName === 'aria-label' ||
+                mutation.attributeName === 'aria-expanded' ||
+                mutation.attributeName === 'style' ||
+                mutation.attributeName === 'class') {
+                // Check if element became visible
+                const target = mutation.target;
+                if (target.nodeType === Node.ELEMENT_NODE) {
+                    const style = window.getComputedStyle(target);
+                    if (style.display !== 'none' && style.visibility !== 'hidden') {
+                        hasNewContent = true;
+                    }
+                }
             }
         }
     });
@@ -1982,5 +2120,40 @@ observer.observe(document.body, {
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ['title', 'placeholder', 'alt', 'value']
+    attributeFilter: ['title', 'placeholder', 'alt', 'value', 'aria-label', 'aria-expanded', 'style', 'class']
 });
+
+// Add event listeners for interactions that might reveal hidden content
+document.addEventListener('click', (e) => {
+    if (!currentSettings.autoTranslate) return;
+    
+    // Delay to allow dropdown/menu to fully render
+    setTimeout(() => {
+        throttledTranslate();
+    }, 100);
+}, true);
+
+document.addEventListener('mouseenter', (e) => {
+    if (!currentSettings.autoTranslate) return;
+    
+    // Check if hovering over elements that typically show dropdowns
+    const target = e.target;
+    if (target.matches && (
+        target.matches('[data-toggle], [aria-haspopup], [role="button"], .dropdown, .has-dropdown, .menu-item, nav a, nav button'))) {
+        setTimeout(() => {
+            throttledTranslate();
+        }, 150);
+    }
+}, true);
+
+// Handle focus events for keyboard navigation
+document.addEventListener('focus', (e) => {
+    if (!currentSettings.autoTranslate) return;
+    
+    const target = e.target;
+    if (target.matches && target.matches('select, input, button, [role="combobox"], [role="listbox"]')) {
+        setTimeout(() => {
+            throttledTranslate();
+        }, 100);
+    }
+}, true);
