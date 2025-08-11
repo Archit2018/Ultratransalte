@@ -369,23 +369,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function loadQuickSettings() {
     try {
-        const settings = await chrome.storage.sync.get({
+        const defaults = {
             targetLanguage: 'zh-CN',
             preserveOriginal: true,
             autoTranslate: false,
             interfaceLanguage: 'en',
             videoSubtitles: false
+        };
+        const settings = await new Promise((resolve) => {
+            chrome.storage.sync.get(defaults, (result) => resolve(result || defaults));
         });
-        
+
         document.getElementById('quick-target-language').value = settings.targetLanguage;
         document.getElementById('quick-preserve-original').checked = settings.preserveOriginal;
         document.getElementById('quick-auto-translate').checked = settings.autoTranslate;
-        
+
         const videoCheck = document.getElementById('quick-video-subtitles');
         if (videoCheck) {
             videoCheck.checked = settings.videoSubtitles;
         }
-        
+
         updateInterfaceLanguage(settings.interfaceLanguage);
     } catch (error) {
         console.error('Error loading settings:', error);
@@ -475,13 +478,16 @@ function openSettingsPageFallback() {
 }
 
 async function translateCurrentPage() {
-    const settings = await chrome.storage.sync.get({
+    const defaults = {
         translationApi: 'google',
         apiKey: '',
         targetLanguage: 'zh-CN',
         preserveOriginal: true,
         modelName: '',
         customPrompt: ''
+    };
+    const settings = await new Promise((resolve) => {
+        chrome.storage.sync.get(defaults, (result) => resolve(result || defaults));
     });
 
     if (settings.translationApi !== 'google' && !settings.apiKey) {
@@ -578,13 +584,14 @@ async function stopTranslation() {
                 stopBtn.disabled = false;
             }
         });
+        }
     });
 }
 
 async function updateApiStatus() {
-    const settings = await chrome.storage.sync.get({
-        translationApi: 'google',
-        apiKey: ''
+    const defaults = { translationApi: 'google', apiKey: '' };
+    const settings = await new Promise((resolve) => {
+        chrome.storage.sync.get(defaults, (result) => resolve(result || defaults));
     });
     
     const apiIndicator = document.getElementById('api-status');
