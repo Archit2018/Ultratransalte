@@ -1,5 +1,5 @@
 let isTranslating = false;
-let translatedNodes = new Set();
+let translatedNodes = new WeakSet(); // Changed to WeakSet to avoid memory leaks
 let currentSettings = {};
 // WeakMap to store original text without polluting DOM
 const originalTextMap = new WeakMap();
@@ -1205,6 +1205,8 @@ function applyTranslation(textNode, translation, preserveOriginal) {
             wrapper.appendChild(translatedSpan);
         }
         
+        // Store original text mapping to wrapper for restoration
+        originalTextMap.set(wrapper, originalText);
         parent.replaceChild(wrapper, textNode);
     } else {
         // Replacement mode - store original in WeakMap
@@ -1316,8 +1318,8 @@ function restoreOriginalText(element) {
         }
     });
     
-    // Clear translated nodes set
-    translatedNodes.clear();
+    // WeakSet automatically garbage collects when nodes are removed
+    // translatedNodes.clear(); // WeakSet doesn't have clear method
 }
 
 // Toggle translation on/off
@@ -1874,6 +1876,13 @@ function cleanupVideoSubtitles(video) {
         }
         
         translatedTracks.delete(video);
+    }
+    
+    // Clean up observer
+    const observer = videoObservers.get(video);
+    if (observer) {
+        observer.disconnect();
+        videoObservers.delete(video);
     }
 }
 

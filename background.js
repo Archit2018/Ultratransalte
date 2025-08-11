@@ -234,7 +234,7 @@ async function translateWithOpenAI(texts, targetLanguage, apiKey, customPrompt, 
                 'Authorization': `Bearer ${apiKey}`
             },
             body: JSON.stringify({
-                model: modelName || 'gpt-3.5-turbo',
+                model: modelName || 'gpt-4o-mini',
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
