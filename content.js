@@ -647,6 +647,599 @@ const observer = new MutationObserver((mutations) => {
     }
 });
 
+// Video subtitle translation functionality
+let videoSubtitleSettings = {
+    enabled: false,
+    mode: 'translate', // 'off' | 'translate' | 'asr'
+    bilingualMode: 'overlay', // 'track' | 'overlay'
+    asrProvider: 'whisper', // 'whisper' | 'google-stt' | 'deepgram'
+    latencyMode: 'balanced' // 'low' | 'balanced' | 'high'
+};
+
+const translatedTracks = new WeakMap();
+const videoObservers = new WeakMap();
+
+// VTT/SRT parsing utilities
+function parseVTT(content) {
+    const cues = [];
+    const lines = content.split('\n');
+    let i = 0;
+    
+    // Skip WEBVTT header
+    while (i < lines.length && !lines[i].includes('-->')) {
+        i++;
+    }
+    
+    while (i < lines.length) {
+        // Skip empty lines
+        while (i < lines.length && !lines[i].trim()) {
+            i++;
+        }
+        
+        if (i >= lines.length) break;
+        
+        // Check for timestamp line
+        const timestampLine = lines[i];
+        if (timestampLine.includes('-->')) {
+            const [start, end] = timestampLine.split('-->').map(s => s.trim());
+            const startTime = parseVTTTime(start);
+            const endTime = parseVTTTime(end);
+            
+            i++;
+            const textLines = [];
+            
+            // Collect text lines until empty line or next cue
+            while (i < lines.length && lines[i].trim() && !lines[i].includes('-->')) {
+                textLines.push(lines[i]);
+                i++;
+            }
+            
+            if (textLines.length > 0) {
+                cues.push({
+                    startTime,
+                    endTime,
+                    text: textLines.join('\n')
+                });
+            }
+        } else {
+            i++;
+        }
+    }
+    
+    return cues;
+}
+
+function parseSRT(content) {
+    const cues = [];
+    const blocks = content.trim().split(/\n\s*\n/);
+    
+    for (const block of blocks) {
+        const lines = block.trim().split('\n');
+        if (lines.length < 2) continue;
+        
+        // Find timestamp line
+        let timestampIndex = -1;
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes('-->')) {
+                timestampIndex = i;
+                break;
+            }
+        }
+        
+        if (timestampIndex === -1) continue;
+        
+        const [start, end] = lines[timestampIndex].split('-->').map(s => s.trim());
+        const startTime = parseSRTTime(start);
+        const endTime = parseSRTTime(end);
+        
+        const textLines = lines.slice(timestampIndex + 1);
+        if (textLines.length > 0) {
+            cues.push({
+                startTime,
+                endTime,
+                text: textLines.join('\n')
+            });
+        }
+    }
+    
+    return cues;
+}
+
+function parseVTTTime(timeStr) {
+    const parts = timeStr.split(':');
+    if (parts.length === 3) {
+        const [h, m, s] = parts;
+        return parseFloat(h) * 3600 + parseFloat(m) * 60 + parseFloat(s);
+    } else if (parts.length === 2) {
+        const [m, s] = parts;
+        return parseFloat(m) * 60 + parseFloat(s);
+    }
+    return parseFloat(timeStr) || 0;
+}
+
+function parseSRTTime(timeStr) {
+    const timePart = timeStr.replace(',', '.');
+    return parseVTTTime(timePart);
+}
+
+function formatVTTTime(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = (seconds % 60).toFixed(3);
+    
+    if (h > 0) {
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.padStart(6, '0')}`;
+    } else {
+        return `${m.toString().padStart(2, '0')}:${s.padStart(6, '0')}`;
+    }
+}
+
+// Subtitle detection and extraction
+async function detectVideoSubtitles(video) {
+    const subtitleInfo = {
+        hasSubtitles: false,
+        tracks: [],
+        targetLanguageAvailable: false
+    };
+    
+    // Check for HTML5 video tracks
+    if (video.textTracks && video.textTracks.length > 0) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+            const track = video.textTracks[i];
+            if (track.kind === 'subtitles' || track.kind === 'captions') {
+                subtitleInfo.hasSubtitles = true;
+                subtitleInfo.tracks.push({
+                    language: track.language,
+                    label: track.label,
+                    mode: track.mode,
+                    track: track,
+                    index: i
+                });
+                
+                if (track.language === currentSettings.targetLanguage) {
+                    subtitleInfo.targetLanguageAvailable = true;
+                }
+            }
+        }
+    }
+    
+    // Check for track elements
+    const trackElements = video.querySelectorAll('track');
+    trackElements.forEach(trackEl => {
+        const kind = trackEl.kind || 'subtitles';
+        if (kind === 'subtitles' || kind === 'captions') {
+            subtitleInfo.hasSubtitles = true;
+        }
+    });
+    
+    return subtitleInfo;
+}
+
+// Extract subtitle cues from track
+async function extractSubtitleCues(track) {
+    const cues = [];
+    
+    // First try to get cues directly
+    if (track.cues && track.cues.length > 0) {
+        for (let i = 0; i < track.cues.length; i++) {
+            const cue = track.cues[i];
+            cues.push({
+                startTime: cue.startTime,
+                endTime: cue.endTime,
+                text: cue.text
+            });
+        }
+        return cues;
+    }
+    
+    // If track has a source URL, try to fetch it
+    const trackElement = document.querySelector(`track[srclang="${track.language}"]`);
+    if (trackElement && trackElement.src) {
+        try {
+            const response = await fetch(trackElement.src);
+            const content = await response.text();
+            
+            // Determine format and parse
+            if (content.includes('WEBVTT')) {
+                return parseVTT(content);
+            } else {
+                return parseSRT(content);
+            }
+        } catch (error) {
+            console.warn('Failed to fetch subtitle track:', error);
+        }
+    }
+    
+    return cues;
+}
+
+// Batch translate subtitle cues
+async function translateSubtitleCues(cues, settings) {
+    const batchSize = 50;
+    const maxCharsPerBatch = 5000;
+    const translatedCues = [];
+    
+    for (let i = 0; i < cues.length; i += batchSize) {
+        const batch = [];
+        let currentChars = 0;
+        
+        for (let j = i; j < Math.min(i + batchSize, cues.length); j++) {
+            const cue = cues[j];
+            if (currentChars + cue.text.length > maxCharsPerBatch && batch.length > 0) {
+                break;
+            }
+            batch.push(cue);
+            currentChars += cue.text.length;
+        }
+        
+        if (batch.length === 0) continue;
+        
+        // Extract texts for translation
+        const texts = batch.map(cue => cue.text);
+        
+        try {
+            // Send translation request
+            const translations = await sendTranslationRequest(texts, settings);
+            
+            // Map translations back to cues
+            batch.forEach((cue, index) => {
+                translatedCues.push({
+                    startTime: cue.startTime,
+                    endTime: cue.endTime,
+                    originalText: cue.text,
+                    text: translations[index] || cue.text
+                });
+            });
+        } catch (error) {
+            console.error('Subtitle translation error:', error);
+            // Fallback to original text
+            batch.forEach(cue => {
+                translatedCues.push({
+                    startTime: cue.startTime,
+                    endTime: cue.endTime,
+                    originalText: cue.text,
+                    text: cue.text
+                });
+            });
+        }
+        
+        // Small delay between batches
+        await delay(100);
+    }
+    
+    return translatedCues;
+}
+
+// Generate VTT content from cues
+function generateVTT(cues, language) {
+    let vtt = 'WEBVTT\n\n';
+    
+    cues.forEach((cue, index) => {
+        vtt += `${index + 1}\n`;
+        vtt += `${formatVTTTime(cue.startTime)} --> ${formatVTTTime(cue.endTime)}\n`;
+        vtt += `${cue.text}\n\n`;
+    });
+    
+    return vtt;
+}
+
+// Create and inject translated subtitle track
+function injectTranslatedTrack(video, translatedCues, targetLanguage) {
+    // Remove existing translated track if any
+    const existingTrack = video.querySelector('track.ultra-translate-track');
+    if (existingTrack) {
+        existingTrack.remove();
+    }
+    
+    // Generate VTT content
+    const vttContent = generateVTT(translatedCues, targetLanguage);
+    
+    // Create blob URL
+    const blob = new Blob([vttContent], { type: 'text/vtt' });
+    const url = URL.createObjectURL(blob);
+    
+    // Create track element
+    const trackElement = document.createElement('track');
+    trackElement.className = 'ultra-translate-track';
+    trackElement.kind = 'subtitles';
+    trackElement.srclang = targetLanguage;
+    trackElement.label = `UltraTranslate (${targetLanguage})`;
+    trackElement.src = url;
+    trackElement.default = true;
+    
+    // Add track to video
+    video.appendChild(trackElement);
+    
+    // Set track mode to showing
+    setTimeout(() => {
+        const addedTrack = Array.from(video.textTracks).find(
+            t => t.label === `UltraTranslate (${targetLanguage})`
+        );
+        if (addedTrack) {
+            addedTrack.mode = 'showing';
+            
+            // Hide other tracks
+            for (let i = 0; i < video.textTracks.length; i++) {
+                const track = video.textTracks[i];
+                if (track !== addedTrack && (track.kind === 'subtitles' || track.kind === 'captions')) {
+                    track.mode = 'hidden';
+                }
+            }
+        }
+    }, 100);
+    
+    // Store reference for cleanup
+    translatedTracks.set(video, { url, trackElement });
+}
+
+// Create bilingual subtitle overlay
+function createBilingualOverlay(video, translatedCues) {
+    // Remove existing overlay if any
+    const existingOverlay = video.parentElement?.querySelector('.ultra-translate-subtitle-overlay');
+    if (existingOverlay) {
+        existingOverlay.remove();
+    }
+    
+    // Create overlay container
+    const overlay = document.createElement('div');
+    overlay.className = 'ultra-translate-subtitle-overlay';
+    overlay.style.cssText = `
+        position: absolute;
+        bottom: 10%;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+        pointer-events: none;
+        z-index: 999999;
+        max-width: 80%;
+        font-size: 18px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+    `;
+    
+    // Create original text element
+    const originalText = document.createElement('div');
+    originalText.className = 'ultra-translate-subtitle-original';
+    originalText.style.cssText = `
+        color: rgba(255, 255, 255, 0.7);
+        margin-bottom: 5px;
+    `;
+    
+    // Create translated text element
+    const translatedText = document.createElement('div');
+    translatedText.className = 'ultra-translate-subtitle-translated';
+    translatedText.style.cssText = `
+        color: #10a37f;
+        font-weight: bold;
+    `;
+    
+    overlay.appendChild(originalText);
+    overlay.appendChild(translatedText);
+    
+    // Position overlay relative to video
+    const videoContainer = video.parentElement;
+    if (videoContainer) {
+        videoContainer.style.position = 'relative';
+        videoContainer.appendChild(overlay);
+    }
+    
+    // Update overlay based on video time
+    let currentCue = null;
+    
+    const updateOverlay = () => {
+        const currentTime = video.currentTime;
+        const activeCue = translatedCues.find(
+            cue => currentTime >= cue.startTime && currentTime <= cue.endTime
+        );
+        
+        if (activeCue !== currentCue) {
+            currentCue = activeCue;
+            if (activeCue) {
+                originalText.textContent = activeCue.originalText || '';
+                translatedText.textContent = activeCue.text;
+                overlay.style.display = 'block';
+            } else {
+                overlay.style.display = 'none';
+            }
+        }
+    };
+    
+    // Listen to video time updates
+    video.addEventListener('timeupdate', updateOverlay);
+    
+    // Store reference for cleanup
+    const overlayData = translatedTracks.get(video) || {};
+    overlayData.overlay = overlay;
+    overlayData.updateHandler = updateOverlay;
+    translatedTracks.set(video, overlayData);
+}
+
+// Main video subtitle translation handler
+async function handleVideoSubtitles(video) {
+    // Skip if already processed
+    if (translatedTracks.has(video)) {
+        return;
+    }
+    
+    const subtitleInfo = await detectVideoSubtitles(video);
+    
+    if (!subtitleInfo.hasSubtitles) {
+        // No subtitles, could implement ASR here in the future
+        console.log('No subtitles found for video');
+        return;
+    }
+    
+    if (subtitleInfo.targetLanguageAvailable) {
+        // Target language already available, just enable it
+        const targetTrack = subtitleInfo.tracks.find(
+            t => t.language === currentSettings.targetLanguage
+        );
+        if (targetTrack) {
+            targetTrack.track.mode = 'showing';
+        }
+        return;
+    }
+    
+    // Find a source track to translate
+    const sourceTrack = subtitleInfo.tracks.find(t => t.track.mode !== 'disabled') || 
+                        subtitleInfo.tracks[0];
+    
+    if (!sourceTrack) {
+        console.log('No source subtitle track found');
+        return;
+    }
+    
+    // Ensure track is loaded
+    sourceTrack.track.mode = 'hidden';
+    
+    // Wait for cues to load
+    await new Promise(resolve => {
+        if (sourceTrack.track.cues && sourceTrack.track.cues.length > 0) {
+            resolve();
+        } else {
+            sourceTrack.track.addEventListener('load', resolve, { once: true });
+            setTimeout(resolve, 3000); // Timeout after 3 seconds
+        }
+    });
+    
+    // Extract cues
+    const cues = await extractSubtitleCues(sourceTrack.track);
+    
+    if (cues.length === 0) {
+        console.log('No subtitle cues found');
+        return;
+    }
+    
+    // Translate cues
+    const translatedCues = await translateSubtitleCues(cues, currentSettings);
+    
+    // Apply based on bilingual mode
+    if (videoSubtitleSettings.bilingualMode === 'overlay') {
+        createBilingualOverlay(video, translatedCues);
+    } else {
+        injectTranslatedTrack(video, translatedCues, currentSettings.targetLanguage);
+    }
+}
+
+// Clean up video subtitle resources
+function cleanupVideoSubtitles(video) {
+    const data = translatedTracks.get(video);
+    if (data) {
+        // Clean up blob URL
+        if (data.url) {
+            URL.revokeObjectURL(data.url);
+        }
+        
+        // Remove track element
+        if (data.trackElement) {
+            data.trackElement.remove();
+        }
+        
+        // Remove overlay
+        if (data.overlay) {
+            data.overlay.remove();
+        }
+        
+        // Remove event handler
+        if (data.updateHandler) {
+            video.removeEventListener('timeupdate', data.updateHandler);
+        }
+        
+        translatedTracks.delete(video);
+    }
+}
+
+// Monitor for new videos on the page
+function observeVideos() {
+    // Process existing videos
+    const videos = document.querySelectorAll('video');
+    videos.forEach(video => {
+        if (!videoObservers.has(video) && videoSubtitleSettings.enabled) {
+            // Observe video for changes
+            const observer = new MutationObserver(() => {
+                if (videoSubtitleSettings.enabled) {
+                    handleVideoSubtitles(video);
+                }
+            });
+            
+            observer.observe(video, {
+                attributes: true,
+                attributeFilter: ['src'],
+                childList: true
+            });
+            
+            videoObservers.set(video, observer);
+            
+            // Handle subtitles when video is ready
+            if (video.readyState >= 2) {
+                handleVideoSubtitles(video);
+            } else {
+                video.addEventListener('loadedmetadata', () => {
+                    handleVideoSubtitles(video);
+                }, { once: true });
+            }
+        }
+    });
+}
+
+// Update video subtitle settings from storage
+chrome.storage.sync.get({
+    videoSubtitles: false,
+    videoSubtitleMode: 'translate',
+    videoBilingualMode: 'overlay'
+}, (settings) => {
+    videoSubtitleSettings.enabled = settings.videoSubtitles;
+    videoSubtitleSettings.mode = settings.videoSubtitleMode;
+    videoSubtitleSettings.bilingualMode = settings.videoBilingualMode;
+    
+    if (videoSubtitleSettings.enabled) {
+        observeVideos();
+    }
+});
+
+// Listen for settings updates
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'updateVideoSettings') {
+        videoSubtitleSettings = { ...videoSubtitleSettings, ...request.settings };
+        
+        if (videoSubtitleSettings.enabled) {
+            observeVideos();
+        } else {
+            // Clean up all video subtitles
+            document.querySelectorAll('video').forEach(video => {
+                cleanupVideoSubtitles(video);
+            });
+        }
+        
+        sendResponse({ success: true });
+    }
+});
+
+// Observe DOM for new video elements
+const videoMutationObserver = new MutationObserver((mutations) => {
+    if (!videoSubtitleSettings.enabled) return;
+    
+    let hasNewVideos = false;
+    mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeName === 'VIDEO' || 
+                    (node.nodeType === Node.ELEMENT_NODE && node.querySelector && node.querySelector('video'))) {
+                    hasNewVideos = true;
+                }
+            });
+        }
+    });
+    
+    if (hasNewVideos) {
+        observeVideos();
+    }
+});
+
+videoMutationObserver.observe(document.body, {
+    childList: true,
+    subtree: true
+});
+
 observer.observe(document.body, {
     childList: true,
     subtree: true

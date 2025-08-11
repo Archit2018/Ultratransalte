@@ -14,6 +14,7 @@
                 <a href="#general" class="nav-item active" data-i18n="generalSettings">General</a>
                 <a href="#api" class="nav-item" data-i18n="apiSettings">API Configuration</a>
                 <a href="#translation" class="nav-item" data-i18n="translationSettings">Translation</a>
+                <a href="#video" class="nav-item" data-i18n="videoSettings">Video Subtitles</a>
                 <a href="#appearance" class="nav-item" data-i18n="appearanceSettings">Appearance</a>
                 <a href="#advanced" class="nav-item" data-i18n="advancedSettings">Advanced</a>
                 <a href="#about" class="nav-item" data-i18n="aboutSettings">About</a>
@@ -158,6 +159,89 @@
                         <span class="switch"></span>
                         <span data-i18n="translatePlaceholders">Translate Placeholders</span>
                     </label>
+                </div>
+            </section>
+
+            <!-- Video Subtitle Settings -->
+            <section id="video" class="settings-section">
+                <h2 data-i18n="videoSettings">Video Subtitle Settings</h2>
+                
+                <div class="setting-item">
+                    <label class="switch-label">
+                        <input type="checkbox" id="video-subtitles">
+                        <span class="switch"></span>
+                        <span data-i18n="enableVideoSubtitles">Enable Video Subtitle Translation</span>
+                    </label>
+                    <small data-i18n="videoSubtitlesDesc">Automatically translate subtitles in video players</small>
+                </div>
+
+                <div class="setting-item">
+                    <label for="video-subtitle-mode" data-i18n="subtitleMode">Subtitle Mode:</label>
+                    <select id="video-subtitle-mode">
+                        <option value="off" data-i18n="subtitleModeOff">Off</option>
+                        <option value="translate" data-i18n="subtitleModeTranslate">Translate Existing Subtitles</option>
+                        <option value="asr" data-i18n="subtitleModeASR">Generate & Translate (ASR)</option>
+                    </select>
+                    <small data-i18n="subtitleModeDesc">Choose how subtitles are handled</small>
+                </div>
+
+                <div class="setting-item">
+                    <label for="video-bilingual-mode" data-i18n="bilingualMode">Bilingual Display:</label>
+                    <select id="video-bilingual-mode">
+                        <option value="track" data-i18n="bilingualTrack">Separate Track</option>
+                        <option value="overlay" data-i18n="bilingualOverlay">Overlay (Original + Translation)</option>
+                    </select>
+                    <small data-i18n="bilingualModeDesc">How to display translated subtitles</small>
+                </div>
+
+                <div class="setting-item" id="asr-settings" style="display: none;">
+                    <h3 data-i18n="asrSettings">ASR Settings</h3>
+                    
+                    <div class="setting-item">
+                        <label for="asr-provider" data-i18n="asrProvider">ASR Provider:</label>
+                        <select id="asr-provider">
+                            <option value="whisper" data-i18n="asrWhisper">OpenAI Whisper</option>
+                            <option value="google-stt" data-i18n="asrGoogleSTT">Google Speech-to-Text</option>
+                            <option value="deepgram" data-i18n="asrDeepgram">Deepgram</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="asr-latency" data-i18n="asrLatency">Latency Mode:</label>
+                        <select id="asr-latency">
+                            <option value="low" data-i18n="latencyLow">Low Latency (Fast)</option>
+                            <option value="balanced" data-i18n="latencyBalanced">Balanced</option>
+                            <option value="high" data-i18n="latencyHigh">High Quality (Slow)</option>
+                        </select>
+                    </div>
+
+                    <div class="setting-item">
+                        <label for="asr-api-key" data-i18n="asrApiKey">ASR API Key:</label>
+                        <input type="password" id="asr-api-key" placeholder="Enter ASR API key" data-i18n-placeholder="asrApiKeyPlaceholder">
+                        <small data-i18n="asrApiKeyDesc">Required for ASR functionality</small>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <h3 data-i18n="videoSiteSettings">Site-Specific Settings</h3>
+                    <div class="site-settings">
+                        <label class="switch-label">
+                            <input type="checkbox" id="youtube-captions">
+                            <span class="switch"></span>
+                            <span>YouTube</span>
+                        </label>
+                        <label class="switch-label">
+                            <input type="checkbox" id="netflix-captions">
+                            <span class="switch"></span>
+                            <span>Netflix</span>
+                        </label>
+                        <label class="switch-label">
+                            <input type="checkbox" id="vimeo-captions">
+                            <span class="switch"></span>
+                            <span>Vimeo</span>
+                        </label>
+                    </div>
+                    <small data-i18n="siteSettingsDesc">Enable/disable for specific video platforms</small>
                 </div>
             </section>
 

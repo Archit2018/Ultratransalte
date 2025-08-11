@@ -35,7 +35,8 @@ const translations = {
         clearCache: 'Clear Cache',
         cacheCleared: 'Cache cleared successfully!',
         stopTranslation: 'Stop Translation',
-        cache: 'Cache'
+        cache: 'Cache',
+        videoSubtitles: 'Video Subtitles'
     },
     'zh-CN': {
         appName: '超级翻译',
@@ -73,7 +74,8 @@ const translations = {
         clearCache: '清除缓存',
         cacheCleared: '缓存清除成功！',
         stopTranslation: '停止翻译',
-        cache: '缓存'
+        cache: '缓存',
+        videoSubtitles: '视频字幕'
     },
     'zh-TW': {
         appName: '超級翻譯',
@@ -356,6 +358,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         autoCheck.addEventListener('change', saveQuickSettings);
     }
     
+    const videoCheck = document.getElementById('quick-video-subtitles');
+    if (videoCheck) {
+        videoCheck.addEventListener('change', saveQuickSettings);
+    }
+    
     // Update cache size periodically
     setInterval(updateCacheSize, 5000);
 });
@@ -366,12 +373,18 @@ async function loadQuickSettings() {
             targetLanguage: 'zh-CN',
             preserveOriginal: true,
             autoTranslate: false,
-            interfaceLanguage: 'en'
+            interfaceLanguage: 'en',
+            videoSubtitles: false
         });
         
         document.getElementById('quick-target-language').value = settings.targetLanguage;
         document.getElementById('quick-preserve-original').checked = settings.preserveOriginal;
         document.getElementById('quick-auto-translate').checked = settings.autoTranslate;
+        
+        const videoCheck = document.getElementById('quick-video-subtitles');
+        if (videoCheck) {
+            videoCheck.checked = settings.videoSubtitles;
+        }
         
         updateInterfaceLanguage(settings.interfaceLanguage);
     } catch (error) {
@@ -383,7 +396,8 @@ async function saveQuickSettings() {
     const settings = {
         targetLanguage: document.getElementById('quick-target-language').value,
         preserveOriginal: document.getElementById('quick-preserve-original').checked,
-        autoTranslate: document.getElementById('quick-auto-translate').checked
+        autoTranslate: document.getElementById('quick-auto-translate').checked,
+        videoSubtitles: document.getElementById('quick-video-subtitles')?.checked || false
     };
     
     try {
@@ -394,6 +408,16 @@ async function saveQuickSettings() {
                 action: 'updateSettings',
                 settings: settings
             });
+            
+            // Send video settings update if changed
+            if ('videoSubtitles' in settings) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    action: 'updateVideoSettings',
+                    settings: {
+                        enabled: settings.videoSubtitles
+                    }
+                });
+            }
         });
     } catch (error) {
         console.error('Error saving settings:', error);

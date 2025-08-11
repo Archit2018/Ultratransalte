@@ -69,7 +69,33 @@ const translations = {
         settingsReset: 'All settings have been reset!',
         settingsExported: 'Settings exported successfully!',
         settingsImported: 'Settings imported successfully!',
-        invalidFile: 'Invalid settings file!'
+        invalidFile: 'Invalid settings file!',
+        videoSettings: 'Video Subtitles',
+        enableVideoSubtitles: 'Enable Video Subtitle Translation',
+        videoSubtitlesDesc: 'Automatically translate subtitles in video players',
+        subtitleMode: 'Subtitle Mode:',
+        subtitleModeOff: 'Off',
+        subtitleModeTranslate: 'Translate Existing Subtitles',
+        subtitleModeASR: 'Generate & Translate (ASR)',
+        subtitleModeDesc: 'Choose how subtitles are handled',
+        bilingualMode: 'Bilingual Display:',
+        bilingualTrack: 'Separate Track',
+        bilingualOverlay: 'Overlay (Original + Translation)',
+        bilingualModeDesc: 'How to display translated subtitles',
+        asrSettings: 'ASR Settings',
+        asrProvider: 'ASR Provider:',
+        asrWhisper: 'OpenAI Whisper',
+        asrGoogleSTT: 'Google Speech-to-Text',
+        asrDeepgram: 'Deepgram',
+        asrLatency: 'Latency Mode:',
+        latencyLow: 'Low Latency (Fast)',
+        latencyBalanced: 'Balanced',
+        latencyHigh: 'High Quality (Slow)',
+        asrApiKey: 'ASR API Key:',
+        asrApiKeyPlaceholder: 'Enter ASR API key',
+        asrApiKeyDesc: 'Required for ASR functionality',
+        videoSiteSettings: 'Site-Specific Settings',
+        siteSettingsDesc: 'Enable/disable for specific video platforms'
     },
     'zh-CN': {
         settingsTitle: '超级翻译 设置',
@@ -140,7 +166,33 @@ const translations = {
         settingsReset: '所有设置已重置！',
         settingsExported: '设置导出成功！',
         settingsImported: '设置导入成功！',
-        invalidFile: '无效的设置文件！'
+        invalidFile: '无效的设置文件！',
+        videoSettings: '视频字幕',
+        enableVideoSubtitles: '启用视频字幕翻译',
+        videoSubtitlesDesc: '自动翻译视频播放器中的字幕',
+        subtitleMode: '字幕模式：',
+        subtitleModeOff: '关闭',
+        subtitleModeTranslate: '翻译现有字幕',
+        subtitleModeASR: '生成并翻译（ASR）',
+        subtitleModeDesc: '选择字幕处理方式',
+        bilingualMode: '双语显示：',
+        bilingualTrack: '独立轨道',
+        bilingualOverlay: '叠加显示（原文+译文）',
+        bilingualModeDesc: '如何显示翻译后的字幕',
+        asrSettings: 'ASR设置',
+        asrProvider: 'ASR提供商：',
+        asrWhisper: 'OpenAI Whisper',
+        asrGoogleSTT: 'Google语音转文字',
+        asrDeepgram: 'Deepgram',
+        asrLatency: '延迟模式：',
+        latencyLow: '低延迟（快速）',
+        latencyBalanced: '平衡',
+        latencyHigh: '高质量（慢速）',
+        asrApiKey: 'ASR API密钥：',
+        asrApiKeyPlaceholder: '输入ASR API密钥',
+        asrApiKeyDesc: 'ASR功能所需',
+        videoSiteSettings: '站点特定设置',
+        siteSettingsDesc: '为特定视频平台启用/禁用'
     }
 };
 
@@ -213,6 +265,39 @@ function setupEventListeners() {
     document.getElementById('import-settings').addEventListener('click', () => document.getElementById('import-file').click());
     document.getElementById('import-file').addEventListener('change', importSettings);
     document.getElementById('reset-settings').addEventListener('click', resetSettings);
+    
+    // Video subtitle settings
+    const videoSubtitles = document.getElementById('video-subtitles');
+    if (videoSubtitles) {
+        videoSubtitles.addEventListener('change', saveVideoSettings);
+    }
+    const videoSubtitleMode = document.getElementById('video-subtitle-mode');
+    if (videoSubtitleMode) {
+        videoSubtitleMode.addEventListener('change', handleVideoModeChange);
+    }
+    const videoBilingualMode = document.getElementById('video-bilingual-mode');
+    if (videoBilingualMode) {
+        videoBilingualMode.addEventListener('change', saveVideoSettings);
+    }
+    const asrProvider = document.getElementById('asr-provider');
+    if (asrProvider) {
+        asrProvider.addEventListener('change', saveVideoSettings);
+    }
+    const asrLatency = document.getElementById('asr-latency');
+    if (asrLatency) {
+        asrLatency.addEventListener('change', saveVideoSettings);
+    }
+    const asrApiKey = document.getElementById('asr-api-key');
+    if (asrApiKey) {
+        asrApiKey.addEventListener('blur', saveVideoSettings);
+    }
+    // Site-specific settings
+    ['youtube-captions', 'netflix-captions', 'vimeo-captions'].forEach(id => {
+        const elem = document.getElementById(id);
+        if (elem) {
+            elem.addEventListener('change', saveVideoSettings);
+        }
+    });
 }
 
 // Load settings
@@ -260,6 +345,46 @@ async function loadSettings() {
         document.getElementById('cache-expiry').value = settings.cacheExpiry || 24;
         document.getElementById('debug-mode').checked = settings.debugMode || false;
         document.getElementById('excluded-sites').value = settings.excludedSites || '';
+        
+        // Video subtitle settings
+        const videoSubtitles = document.getElementById('video-subtitles');
+        if (videoSubtitles) {
+            videoSubtitles.checked = settings.videoSubtitles || false;
+        }
+        const videoSubtitleMode = document.getElementById('video-subtitle-mode');
+        if (videoSubtitleMode) {
+            videoSubtitleMode.value = settings.videoSubtitleMode || 'translate';
+            handleVideoModeChange();
+        }
+        const videoBilingualMode = document.getElementById('video-bilingual-mode');
+        if (videoBilingualMode) {
+            videoBilingualMode.value = settings.videoBilingualMode || 'overlay';
+        }
+        const asrProvider = document.getElementById('asr-provider');
+        if (asrProvider) {
+            asrProvider.value = settings.asrProvider || 'whisper';
+        }
+        const asrLatency = document.getElementById('asr-latency');
+        if (asrLatency) {
+            asrLatency.value = settings.asrLatency || 'balanced';
+        }
+        const asrApiKey = document.getElementById('asr-api-key');
+        if (asrApiKey) {
+            asrApiKey.value = settings.asrApiKey || '';
+        }
+        // Site-specific settings
+        const youtubeCaptions = document.getElementById('youtube-captions');
+        if (youtubeCaptions) {
+            youtubeCaptions.checked = settings.youtubeCaptions !== false;
+        }
+        const netflixCaptions = document.getElementById('netflix-captions');
+        if (netflixCaptions) {
+            netflixCaptions.checked = settings.netflixCaptions !== false;
+        }
+        const vimeoCaptions = document.getElementById('vimeo-captions');
+        if (vimeoCaptions) {
+            vimeoCaptions.checked = settings.vimeoCaptions !== false;
+        }
         
         // Update interface language
         updateInterfaceLanguage(settings.interfaceLanguage || 'en');
@@ -512,6 +637,56 @@ async function resetSettings() {
 // Get message
 function getMessage(key) {
     return translations[currentLang][key] || translations['en'][key] || key;
+}
+
+// Handle video subtitle mode change
+function handleVideoModeChange() {
+    const mode = document.getElementById('video-subtitle-mode')?.value;
+    const asrSettings = document.getElementById('asr-settings');
+    if (asrSettings) {
+        asrSettings.style.display = mode === 'asr' ? 'block' : 'none';
+    }
+    saveVideoSettings();
+}
+
+// Save video subtitle settings
+async function saveVideoSettings() {
+    const settings = {
+        videoSubtitles: document.getElementById('video-subtitles')?.checked || false,
+        videoSubtitleMode: document.getElementById('video-subtitle-mode')?.value || 'translate',
+        videoBilingualMode: document.getElementById('video-bilingual-mode')?.value || 'overlay',
+        asrProvider: document.getElementById('asr-provider')?.value || 'whisper',
+        asrLatency: document.getElementById('asr-latency')?.value || 'balanced',
+        asrApiKey: document.getElementById('asr-api-key')?.value || '',
+        youtubeCaptions: document.getElementById('youtube-captions')?.checked !== false,
+        netflixCaptions: document.getElementById('netflix-captions')?.checked !== false,
+        vimeoCaptions: document.getElementById('vimeo-captions')?.checked !== false
+    };
+    
+    try {
+        await chrome.storage.sync.set(settings);
+        
+        // Send update to content scripts
+        chrome.tabs.query({}, (tabs) => {
+            tabs.forEach(tab => {
+                chrome.tabs.sendMessage(tab.id, {
+                    action: 'updateVideoSettings',
+                    settings: {
+                        enabled: settings.videoSubtitles,
+                        mode: settings.videoSubtitleMode,
+                        bilingualMode: settings.videoBilingualMode,
+                        asrProvider: settings.asrProvider,
+                        latencyMode: settings.asrLatency
+                    }
+                }).catch(() => {}); // Ignore errors for tabs without content script
+            });
+        });
+        
+        showStatus(getMessage('settingsSaved'), 'success');
+    } catch (error) {
+        showStatus(getMessage('errorSaving'), 'error');
+        console.error('Error saving video settings:', error);
+    }
 }
 
 // Show status message
