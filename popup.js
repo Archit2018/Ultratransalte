@@ -337,6 +337,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (translateBtn) {
         translateBtn.addEventListener('click', translateCurrentPage);
     }
+
+    // Close button to simply close popup without triggering any translation
+    const closeBtn = document.getElementById('close-popup');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => window.close());
+    }
     
     const stopBtn = document.getElementById('stop-translation');
     if (stopBtn) {
