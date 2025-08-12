@@ -1113,73 +1113,130 @@ async function translateFormElements(settings) {
     }
 }
 
-// Translate dynamic dropdown and navigation elements
+// Translate dynamic dropdown and navigation elements with improved detection
 async function translateDynamicElements(settings) {
-    // Find dropdown menus and navigation items that might be dynamically shown
-    const dynamicSelectors = [
-        // Common dropdown and menu selectors
-        '.dropdown-menu:not(.ultra-translate-processed)',
-        '.dropdown-content:not(.ultra-translate-processed)',
-        '.submenu:not(.ultra-translate-processed)',
-        '.sub-menu:not(.ultra-translate-processed)',
-        '.nav-dropdown:not(.ultra-translate-processed)',
-        '.navbar-dropdown:not(.ultra-translate-processed)',
-        '[role="menu"]:not(.ultra-translate-processed)',
-        '[role="listbox"]:not(.ultra-translate-processed)',
-        '.popover:not(.ultra-translate-processed)',
-        '.tooltip:not(.ultra-translate-processed)',
-        '.modal-content:not(.ultra-translate-processed)',
-        '.dialog-content:not(.ultra-translate-processed)',
-        // Material UI / Bootstrap / common frameworks
-        '.MuiMenu-list:not(.ultra-translate-processed)',
-        '.MuiSelect-menu:not(.ultra-translate-processed)',
-        '.ant-dropdown-menu:not(.ultra-translate-processed)',
-        '.ant-select-dropdown:not(.ultra-translate-processed)',
-        '.dropdown.show:not(.ultra-translate-processed)',
-        '.collapse.show:not(.ultra-translate-processed)',
-        // Navigation specific
-        'nav ul:not(.ultra-translate-processed)',
-        'nav li:not(.ultra-translate-processed)',
-        '.navigation-menu:not(.ultra-translate-processed)',
-        '.nav-menu:not(.ultra-translate-processed)',
-        // Elements that are shown on hover or click
-        '[aria-expanded="true"]:not(.ultra-translate-processed)',
-        '[data-toggle="dropdown"]:not(.ultra-translate-processed)',
-        '.is-open:not(.ultra-translate-processed)',
-        '.is-active:not(.ultra-translate-processed)',
-        '.show:not(.ultra-translate-processed)',
-        '.active:not(.ultra-translate-processed)',
-        '.open:not(.ultra-translate-processed)',
-        '.visible:not(.ultra-translate-processed)'
-    ];
+    // Use attribute-based detection for more flexibility
+    const dynamicElements = findDynamicElements();
     
-    for (const selector of dynamicSelectors) {
-        try {
-            const elements = document.querySelectorAll(selector);
-            for (const element of elements) {
-                // Mark as processed to avoid re-translation
-                element.classList.add('ultra-translate-processed');
-                
-                // Get text nodes within this dynamic element
-                const textNodes = getTextNodes(element);
-                if (textNodes.length > 0) {
-                    const batches = createOptimizedBatches(textNodes, settings);
-                    for (const batch of batches) {
-                        await translateBatch(batch, settings);
-                    }
-                }
-                
-                // Also translate form elements within dynamic content
-                const formElements = element.querySelectorAll('button, option, label, [title], [placeholder], [aria-label]');
-                if (formElements.length > 0) {
-                    await translateFormElementsInContainer(element, settings);
-                }
-            }
-        } catch (error) {
-            // Silently continue if selector fails
+    for (const element of dynamicElements) {
+        // Skip if already processed
+        if (element.classList.contains('ultra-translate-processed')) {
             continue;
         }
+        
+        // Mark as processed to avoid re-translation
+        element.classList.add('ultra-translate-processed');
+        
+        // Get text nodes within this dynamic element
+        const textNodes = getTextNodes(element);
+        if (textNodes.length > 0) {
+            const batches = createOptimizedBatches(textNodes, settings);
+            for (const batch of batches) {
+                await translateBatch(batch, settings);
+            }
+        }
+        
+        // Also translate form elements within dynamic content
+        await translateFormElementsInContainer(element, settings);
     }
+}
+
+// Find dynamic elements using multiple detection strategies
+function findDynamicElements() {
+    const elements = new Set();
+    
+    // Strategy 1: Role-based detection
+    const roleElements = document.querySelectorAll([
+        '[role="menu"]',
+        '[role="listbox"]',
+        '[role="dialog"]',
+        '[role="tooltip"]',
+        '[role="alert"]',
+        '[role="navigation"]'
+    ].join(','));
+    roleElements.forEach(el => elements.add(el));
+    
+    // Strategy 2: Aria attributes
+    const ariaElements = document.querySelectorAll([
+        '[aria-expanded="true"]',
+        '[aria-hidden="false"]',
+        '[aria-live]',
+        '[aria-haspopup]'
+    ].join(','));
+    ariaElements.forEach(el => elements.add(el));
+    
+    // Strategy 3: Data attributes commonly used for dynamic content
+    const dataElements = document.querySelectorAll([
+        '[data-toggle]',
+        '[data-dropdown]',
+        '[data-menu]',
+        '[data-tooltip]',
+        '[data-popover]'
+    ].join(','));
+    dataElements.forEach(el => elements.add(el));
+    
+    // Strategy 4: Visibility-based detection
+    const visibilitySelectors = [];
+    
+    // Check computed styles for recently shown elements
+    document.querySelectorAll('*').forEach(el => {
+        // Skip if too many child elements (performance)
+        if (el.children.length > 100) return;
+        
+        const style = window.getComputedStyle(el);
+        
+        // Check if element is visible and positioned
+        if (style.display !== 'none' && 
+            style.visibility !== 'hidden' &&
+            style.opacity !== '0' &&
+            (style.position === 'absolute' || style.position === 'fixed')) {
+            
+            // Check if it looks like a dropdown/tooltip/modal
+            const rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                // Check for dropdown-like characteristics
+                const hasDropdownClass = el.className && typeof el.className === 'string' && 
+                    /dropdown|menu|popup|popover|tooltip|modal|dialog|overlay/i.test(el.className);
+                
+                const hasDropdownId = el.id && 
+                    /dropdown|menu|popup|popover|tooltip|modal|dialog|overlay/i.test(el.id);
+                
+                if (hasDropdownClass || hasDropdownId) {
+                    elements.add(el);
+                }
+            }
+        }
+    });
+    
+    // Strategy 5: Framework-specific detection (non-hardcoded)
+    // Look for elements with framework-specific patterns
+    const frameworkPatterns = [
+        // React/Vue/Angular patterns
+        el => el.hasAttribute('v-show') || el.hasAttribute('v-if'),
+        el => el.hasAttribute('ng-show') || el.hasAttribute('ng-if'),
+        el => el.hasAttribute('x-show') || el.hasAttribute('x-if'),
+        // Check for state classes
+        el => {
+            const className = el.className;
+            if (typeof className === 'string') {
+                return /\b(is-open|is-active|is-visible|is-expanded|is-shown|--open|--active|--visible)\b/.test(className);
+            }
+            return false;
+        }
+    ];
+    
+    document.querySelectorAll('*').forEach(el => {
+        if (el.children.length > 100) return; // Performance guard
+        
+        for (const pattern of frameworkPatterns) {
+            if (pattern(el)) {
+                elements.add(el);
+                break;
+            }
+        }
+    });
+    
+    return Array.from(elements);
 }
 
 // Helper function to translate form elements within a specific container
@@ -1562,39 +1619,81 @@ let videoSubtitleSettings = {
 const translatedTracks = new WeakMap();
 const videoObservers = new WeakMap();
 
-// VTT/SRT parsing utilities
+// VTT/SRT parsing utilities with improved robustness
 function parseVTT(content) {
     const cues = [];
-    const lines = content.split('\n');
+    const lines = content.split(/\r?\n/);
     let i = 0;
     
-    // Skip WEBVTT header
+    // Skip WEBVTT header and any metadata
     while (i < lines.length && !lines[i].includes('-->')) {
+        // Skip NOTE blocks and other metadata
+        if (lines[i].startsWith('NOTE') || lines[i].startsWith('STYLE')) {
+            // Skip until empty line
+            while (i < lines.length && lines[i].trim()) {
+                i++;
+            }
+        }
         i++;
     }
     
     while (i < lines.length) {
-        // Skip empty lines
-        while (i < lines.length && !lines[i].trim()) {
+        // Skip empty lines and cue identifiers
+        while (i < lines.length && (!lines[i].trim() || /^\d+$/.test(lines[i].trim()))) {
             i++;
         }
         
         if (i >= lines.length) break;
         
-        // Check for timestamp line
+        // Check for timestamp line with more flexible pattern
         const timestampLine = lines[i];
-        if (timestampLine.includes('-->')) {
-            const [start, end] = timestampLine.split('-->').map(s => s.trim());
+        const timestampMatch = timestampLine.match(/([\d:.]+)\s*-->\s*([\d:.]+)/);
+        
+        if (timestampMatch) {
+            const [, start, end] = timestampMatch;
             const startTime = parseVTTTime(start);
             const endTime = parseVTTTime(end);
+            
+            // Skip invalid timestamps
+            if (isNaN(startTime) || isNaN(endTime) || startTime >= endTime) {
+                i++;
+                continue;
+            }
             
             i++;
             const textLines = [];
             
-            // Collect text lines until empty line or next cue
-            while (i < lines.length && lines[i].trim() && !lines[i].includes('-->')) {
-                textLines.push(lines[i]);
+            // Collect text lines until timestamp or significant gap
+            while (i < lines.length) {
+                const line = lines[i];
+                
+                // Stop if we hit another timestamp
+                if (line.includes('-->')) break;
+                
+                // Stop if we hit a cue number followed by timestamp
+                if (/^\d+$/.test(line.trim()) && 
+                    i + 1 < lines.length && 
+                    lines[i + 1].includes('-->')) {
+                    break;
+                }
+                
+                // Add non-empty lines
+                if (line.trim()) {
+                    // Strip VTT tags like <v>, <c>, etc.
+                    const cleanLine = line.replace(/<[^>]+>/g, '').trim();
+                    if (cleanLine) {
+                        textLines.push(cleanLine);
+                    }
+                }
+                
                 i++;
+                
+                // Break on double empty lines
+                if (i < lines.length - 1 && 
+                    !lines[i - 1].trim() && 
+                    !lines[i].trim()) {
+                    break;
+                }
             }
             
             if (textLines.length > 0) {
@@ -1614,34 +1713,87 @@ function parseVTT(content) {
 
 function parseSRT(content) {
     const cues = [];
-    const blocks = content.trim().split(/\n\s*\n/);
     
-    for (const block of blocks) {
-        const lines = block.trim().split('\n');
-        if (lines.length < 2) continue;
-        
-        // Find timestamp line
-        let timestampIndex = -1;
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes('-->')) {
-                timestampIndex = i;
-                break;
-            }
+    // More robust SRT parsing that handles missing empty lines
+    const lines = content.split(/\r?\n/);
+    let i = 0;
+    
+    while (i < lines.length) {
+        // Skip empty lines and BOM
+        while (i < lines.length && (!lines[i].trim() || lines[i].charCodeAt(0) === 0xFEFF)) {
+            i++;
         }
         
-        if (timestampIndex === -1) continue;
+        if (i >= lines.length) break;
         
-        const [start, end] = lines[timestampIndex].split('-->').map(s => s.trim());
-        const startTime = parseSRTTime(start);
-        const endTime = parseSRTTime(end);
+        // Skip cue number if present
+        if (/^\d+$/.test(lines[i].trim())) {
+            i++;
+        }
         
-        const textLines = lines.slice(timestampIndex + 1);
-        if (textLines.length > 0) {
-            cues.push({
-                startTime,
-                endTime,
-                text: textLines.join('\n')
-            });
+        // Look for timestamp line
+        if (i < lines.length) {
+            const timestampMatch = lines[i].match(/([\d:,]+)\s*-->\s*([\d:,]+)/);
+            
+            if (timestampMatch) {
+                const [, start, end] = timestampMatch;
+                const startTime = parseSRTTime(start);
+                const endTime = parseSRTTime(end);
+                
+                // Skip invalid timestamps
+                if (isNaN(startTime) || isNaN(endTime) || startTime >= endTime) {
+                    i++;
+                    continue;
+                }
+                
+                i++;
+                const textLines = [];
+                
+                // Collect subtitle text
+                while (i < lines.length) {
+                    const line = lines[i].trim();
+                    
+                    // Stop at next cue number or timestamp
+                    if (/^\d+$/.test(line) && 
+                        i + 1 < lines.length && 
+                        lines[i + 1].includes('-->')) {
+                        break;
+                    }
+                    
+                    // Stop at next timestamp
+                    if (line.includes('-->')) {
+                        break;
+                    }
+                    
+                    // Add non-empty lines
+                    if (line) {
+                        // Remove formatting tags
+                        const cleanLine = line
+                            .replace(/<[^>]+>/g, '')
+                            .replace(/\{[^}]+\}/g, '')
+                            .trim();
+                        if (cleanLine) {
+                            textLines.push(cleanLine);
+                        }
+                    } else if (textLines.length > 0) {
+                        // Empty line after text might indicate end of cue
+                        i++;
+                        break;
+                    }
+                    
+                    i++;
+                }
+                
+                if (textLines.length > 0) {
+                    cues.push({
+                        startTime,
+                        endTime,
+                        text: textLines.join('\n')
+                    });
+                }
+            } else {
+                i++;
+            }
         }
     }
     
@@ -1649,20 +1801,43 @@ function parseSRT(content) {
 }
 
 function parseVTTTime(timeStr) {
+    // Handle various time formats more robustly
+    timeStr = timeStr.trim();
+    
+    // Handle milliseconds with both . and ,
+    timeStr = timeStr.replace(',', '.');
+    
     const parts = timeStr.split(':');
-    if (parts.length === 3) {
-        const [h, m, s] = parts;
-        return parseFloat(h) * 3600 + parseFloat(m) * 60 + parseFloat(s);
-    } else if (parts.length === 2) {
-        const [m, s] = parts;
-        return parseFloat(m) * 60 + parseFloat(s);
+    
+    try {
+        if (parts.length === 3) {
+            const [h, m, s] = parts;
+            return parseInt(h, 10) * 3600 + parseInt(m, 10) * 60 + parseFloat(s);
+        } else if (parts.length === 2) {
+            const [m, s] = parts;
+            return parseInt(m, 10) * 60 + parseFloat(s);
+        } else if (parts.length === 1) {
+            // Just seconds
+            return parseFloat(parts[0]);
+        }
+    } catch (e) {
+        console.warn('Failed to parse time:', timeStr, e);
     }
-    return parseFloat(timeStr) || 0;
+    
+    return 0;
 }
 
 function parseSRTTime(timeStr) {
-    const timePart = timeStr.replace(',', '.');
-    return parseVTTTime(timePart);
+    // Handle SRT format: HH:MM:SS,mmm or HH:MM:SS.mmm
+    timeStr = timeStr.trim();
+    
+    // Replace comma with dot for milliseconds
+    timeStr = timeStr.replace(',', '.');
+    
+    // Some SRT files use different separators
+    timeStr = timeStr.replace(/[;]/g, ':');
+    
+    return parseVTTTime(timeStr);
 }
 
 function formatVTTTime(seconds) {
@@ -1718,8 +1893,8 @@ async function detectVideoSubtitles(video) {
     return subtitleInfo;
 }
 
-// Extract subtitle cues from track
-async function extractSubtitleCues(track) {
+// Extract subtitle cues from track with improved fallbacks
+async function extractSubtitleCues(track, video) {
     const cues = [];
     
     // First try to get cues directly
@@ -1729,27 +1904,140 @@ async function extractSubtitleCues(track) {
             cues.push({
                 startTime: cue.startTime,
                 endTime: cue.endTime,
-                text: cue.text
+                text: cue.text || cue.getCueAsHTML?.()?.textContent || ''
             });
         }
         return cues;
     }
     
-    // If track has a source URL, try to fetch it
-    const trackElement = document.querySelector(`track[srclang="${track.language}"]`);
+    // Try multiple methods to find track element
+    let trackElement = document.querySelector(`track[srclang="${track.language}"]`);
+    
+    if (!trackElement && track.id) {
+        trackElement = document.querySelector(`track#${track.id}`);
+    }
+    
+    if (!trackElement && track.label) {
+        trackElement = document.querySelector(`track[label="${track.label}"]`);
+    }
+    
+    if (!trackElement && video) {
+        // Find track element within video element
+        trackElement = video.querySelector('track');
+    }
+    
     if (trackElement && trackElement.src) {
         try {
-            const response = await fetch(trackElement.src);
+            // Handle relative URLs
+            const url = new URL(trackElement.src, window.location.href);
+            
+            const response = await fetch(url.toString(), {
+                mode: 'cors',
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'text/vtt, text/plain, application/x-subrip'
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
             const content = await response.text();
             
-            // Determine format and parse
-            if (content.includes('WEBVTT')) {
-                return parseVTT(content);
-            } else {
-                return parseSRT(content);
+            // Try to detect format
+            if (!content || content.trim().length === 0) {
+                console.warn('Empty subtitle file');
+                return cues;
+            }
+            
+            // Try multiple parsers with fallback
+            try {
+                if (content.includes('WEBVTT') || content.includes('webvtt')) {
+                    return parseVTT(content);
+                } else if (content.includes('-->')) {
+                    // Could be SRT or VTT without header
+                    const vttCues = parseVTT('WEBVTT\n\n' + content);
+                    if (vttCues.length > 0) return vttCues;
+                    
+                    return parseSRT(content);
+                } else {
+                    // Try SRT first, then VTT
+                    const srtCues = parseSRT(content);
+                    if (srtCues.length > 0) return srtCues;
+                    
+                    return parseVTT(content);
+                }
+            } catch (parseError) {
+                console.warn('Failed to parse subtitle content:', parseError);
+                // Try generic line-by-line parsing as last resort
+                return parseGenericSubtitles(content);
             }
         } catch (error) {
             console.warn('Failed to fetch subtitle track:', error);
+            
+            // Try alternative fetch through background script
+            try {
+                const result = await chrome.runtime.sendMessage({
+                    action: 'fetchSubtitles',
+                    url: trackElement.src
+                });
+                
+                if (result && result.content) {
+                    return parseVTT(result.content) || parseSRT(result.content) || [];
+                }
+            } catch (bgError) {
+                console.warn('Background fetch also failed:', bgError);
+            }
+        }
+    }
+    
+    return cues;
+}
+
+// Generic subtitle parser for non-standard formats
+function parseGenericSubtitles(content) {
+    const cues = [];
+    const lines = content.split(/\r?\n/);
+    
+    let currentTime = 0;
+    const defaultDuration = 3; // Default 3 seconds per line
+    
+    for (const line of lines) {
+        const trimmed = line.trim();
+        
+        // Skip empty lines and metadata
+        if (!trimmed || /^(WEBVTT|NOTE|STYLE|REGION)/i.test(trimmed)) {
+            continue;
+        }
+        
+        // Check if it's a timestamp line
+        if (trimmed.includes('-->')) {
+            const timestampMatch = trimmed.match(/([\d:.]+)\s*-->\s*([\d:.]+)/);
+            if (timestampMatch) {
+                currentTime = parseVTTTime(timestampMatch[2]);
+            }
+            continue;
+        }
+        
+        // Skip cue numbers
+        if (/^\d+$/.test(trimmed)) {
+            continue;
+        }
+        
+        // Treat as subtitle text
+        const cleanText = trimmed
+            .replace(/<[^>]+>/g, '') // Remove tags
+            .replace(/\{[^}]+\}/g, '') // Remove style tags
+            .trim();
+        
+        if (cleanText) {
+            cues.push({
+                startTime: currentTime,
+                endTime: currentTime + defaultDuration,
+                text: cleanText
+            });
+            currentTime += defaultDuration;
         }
     }
     
@@ -1875,53 +2163,47 @@ function injectTranslatedTrack(video, translatedCues, targetLanguage) {
     translatedTracks.set(video, { url, trackElement });
 }
 
-// Create bilingual subtitle overlay
+// Create bilingual subtitle overlay with improved positioning
 function createBilingualOverlay(video, translatedCues) {
     // Remove existing overlay if any
-    const existingOverlay = video.parentElement?.querySelector('.ultra-translate-subtitle-overlay');
+    const existingOverlay = document.querySelector('.ultra-translate-subtitle-overlay');
     if (existingOverlay) {
         existingOverlay.remove();
     }
     
+    // Find the best container for the overlay
+    const videoContainer = findBestVideoContainer(video);
+    
     // Create overlay container
     const overlay = document.createElement('div');
     overlay.className = 'ultra-translate-subtitle-overlay';
-    overlay.style.cssText = `
-        position: absolute;
-        bottom: 10%;
-        left: 50%;
-        transform: translateX(-50%);
-        text-align: center;
-        pointer-events: none;
-        z-index: 999999;
-        max-width: 80%;
-        font-size: 18px;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-    `;
+    overlay.dataset.videoId = video.id || 'video-' + Date.now();
     
     // Create original text element
     const originalText = document.createElement('div');
     originalText.className = 'ultra-translate-subtitle-original';
-    originalText.style.cssText = `
-        color: rgba(255, 255, 255, 0.7);
-        margin-bottom: 5px;
-    `;
     
     // Create translated text element
     const translatedText = document.createElement('div');
     translatedText.className = 'ultra-translate-subtitle-translated';
-    translatedText.style.cssText = `
-        color: #10a37f;
-        font-weight: bold;
-    `;
     
     overlay.appendChild(originalText);
     overlay.appendChild(translatedText);
     
-    // Position overlay relative to video
-    const videoContainer = video.parentElement;
-    if (videoContainer) {
-        videoContainer.style.position = 'relative';
+    // Apply styles based on container type and video player detection
+    applyOverlayStyles(overlay, originalText, translatedText, video, videoContainer);
+    
+    // Append overlay to the container
+    if (videoContainer === document.body) {
+        // If we're appending to body, position fixed relative to video
+        positionOverlayFixed(overlay, video);
+        document.body.appendChild(overlay);
+    } else {
+        // Ensure container has position relative/absolute
+        const containerPosition = window.getComputedStyle(videoContainer).position;
+        if (containerPosition === 'static') {
+            videoContainer.style.position = 'relative';
+        }
         videoContainer.appendChild(overlay);
     }
     
@@ -1940,6 +2222,11 @@ function createBilingualOverlay(video, translatedCues) {
                 originalText.textContent = activeCue.originalText || '';
                 translatedText.textContent = activeCue.text;
                 overlay.style.display = 'block';
+                
+                // Update position if using fixed positioning
+                if (overlay.style.position === 'fixed') {
+                    positionOverlayFixed(overlay, video);
+                }
             } else {
                 overlay.style.display = 'none';
             }
@@ -1949,77 +2236,436 @@ function createBilingualOverlay(video, translatedCues) {
     // Listen to video time updates
     video.addEventListener('timeupdate', updateOverlay);
     
+    // Handle video resize/fullscreen
+    const resizeHandler = () => {
+        if (overlay.style.position === 'fixed') {
+            positionOverlayFixed(overlay, video);
+        }
+        // Adjust font size based on video size
+        adjustOverlayFontSize(overlay, video);
+    };
+    
+    video.addEventListener('resize', resizeHandler);
+    window.addEventListener('resize', resizeHandler);
+    document.addEventListener('fullscreenchange', resizeHandler);
+    
     // Store reference for cleanup
     const overlayData = translatedTracks.get(video) || {};
     overlayData.overlay = overlay;
     overlayData.updateHandler = updateOverlay;
+    overlayData.resizeHandler = resizeHandler;
     translatedTracks.set(video, overlayData);
 }
 
-// Main video subtitle translation handler
-async function handleVideoSubtitles(video) {
-    // Skip if already processed
-    if (translatedTracks.has(video)) {
-        return;
-    }
+// Find the best container for video overlay
+function findBestVideoContainer(video) {
+    // Check for common video player containers
+    const playerSelectors = [
+        '.video-player', '.player', '.video-container', '.video-wrapper',
+        '.html5-video-container', '.jw-wrapper', '.vjs-tech', '.plyr',
+        '.mejs-container', '.video-js', '.flowplayer', '.fp-player',
+        '[class*="player"]', '[class*="video"]', '[id*="player"]'
+    ];
     
-    const subtitleInfo = await detectVideoSubtitles(video);
-    
-    if (!subtitleInfo.hasSubtitles) {
-        // No subtitles, could implement ASR here in the future
-        console.log('No subtitles found for video');
-        return;
-    }
-    
-    if (subtitleInfo.targetLanguageAvailable) {
-        // Target language already available, just enable it
-        const targetTrack = subtitleInfo.tracks.find(
-            t => t.language === currentSettings.targetLanguage
-        );
-        if (targetTrack) {
-            targetTrack.track.mode = 'showing';
+    // Try to find a player container
+    for (const selector of playerSelectors) {
+        const container = video.closest(selector);
+        if (container) {
+            return container;
         }
-        return;
     }
     
-    // Find a source track to translate
-    const sourceTrack = subtitleInfo.tracks.find(t => t.track.mode !== 'disabled') || 
-                        subtitleInfo.tracks[0];
+    // Check parent elements for suitable container
+    let parent = video.parentElement;
+    let depth = 0;
+    const maxDepth = 5;
     
-    if (!sourceTrack) {
-        console.log('No source subtitle track found');
-        return;
-    }
-    
-    // Ensure track is loaded
-    sourceTrack.track.mode = 'hidden';
-    
-    // Wait for cues to load
-    await new Promise(resolve => {
-        if (sourceTrack.track.cues && sourceTrack.track.cues.length > 0) {
-            resolve();
-        } else {
-            sourceTrack.track.addEventListener('load', resolve, { once: true });
-            setTimeout(resolve, 3000); // Timeout after 3 seconds
+    while (parent && depth < maxDepth) {
+        const position = window.getComputedStyle(parent).position;
+        const overflow = window.getComputedStyle(parent).overflow;
+        
+        // Good container characteristics
+        if ((position === 'relative' || position === 'absolute') &&
+            overflow !== 'hidden' &&
+            parent.offsetWidth >= video.offsetWidth * 0.9) {
+            return parent;
         }
-    });
-    
-    // Extract cues
-    const cues = await extractSubtitleCues(sourceTrack.track);
-    
-    if (cues.length === 0) {
-        console.log('No subtitle cues found');
-        return;
+        
+        // Check if this is a fullscreen element
+        if (parent.classList.contains('fullscreen') || 
+            parent.webkitDisplayingFullscreen ||
+            parent.matches(':fullscreen')) {
+            return parent;
+        }
+        
+        parent = parent.parentElement;
+        depth++;
     }
     
-    // Translate cues
-    const translatedCues = await translateSubtitleCues(cues, currentSettings);
+    // Fallback to immediate parent or body
+    return video.parentElement || document.body;
+}
+
+// Apply overlay styles based on context
+function applyOverlayStyles(overlay, originalText, translatedText, video, container) {
+    const isFullscreen = document.fullscreenElement || 
+                         document.webkitFullscreenElement ||
+                         document.mozFullScreenElement;
     
-    // Apply based on bilingual mode
-    if (videoSubtitleSettings.bilingualMode === 'overlay') {
-        createBilingualOverlay(video, translatedCues);
+    // Detect video player type for specific adjustments
+    const isYouTube = window.location.hostname.includes('youtube.com');
+    const isVimeo = window.location.hostname.includes('vimeo.com');
+    const isNetflix = window.location.hostname.includes('netflix.com');
+    
+    // Base styles
+    let overlayStyles = `
+        text-align: center;
+        pointer-events: none;
+        z-index: 2147483647;
+        max-width: 80%;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        line-height: 1.4;
+    `;
+    
+    // Position based on container
+    if (container === document.body) {
+        overlayStyles += `
+            position: fixed;
+        `;
     } else {
-        injectTranslatedTrack(video, translatedCues, currentSettings.targetLanguage);
+        overlayStyles += `
+            position: absolute;
+            bottom: ${isYouTube ? '15%' : '10%'};
+            left: 50%;
+            transform: translateX(-50%);
+        `;
+    }
+    
+    // Adjust for specific platforms
+    if (isNetflix) {
+        overlayStyles += `
+            bottom: 20%;
+        `;
+    }
+    
+    // Font size based on video size
+    const videoHeight = video.offsetHeight;
+    let fontSize = Math.max(14, Math.min(32, videoHeight / 25));
+    
+    if (isFullscreen) {
+        fontSize = Math.max(20, Math.min(48, window.innerHeight / 30));
+    }
+    
+    overlayStyles += `
+        font-size: ${fontSize}px;
+        text-shadow: 
+            2px 2px 4px rgba(0, 0, 0, 0.9),
+            -1px -1px 2px rgba(0, 0, 0, 0.9),
+            1px -1px 2px rgba(0, 0, 0, 0.9),
+            -1px 1px 2px rgba(0, 0, 0, 0.9);
+    `;
+    
+    overlay.style.cssText = overlayStyles;
+    
+    // Original text styles
+    originalText.style.cssText = `
+        color: rgba(255, 255, 255, 0.8);
+        margin-bottom: ${fontSize / 4}px;
+        font-size: ${fontSize * 0.9}px;
+        font-weight: 400;
+    `;
+    
+    // Translated text styles
+    translatedText.style.cssText = `
+        color: #10a37f;
+        font-weight: 600;
+        font-size: ${fontSize}px;
+        text-shadow: 
+            2px 2px 6px rgba(0, 0, 0, 1),
+            -1px -1px 3px rgba(0, 0, 0, 1),
+            1px -1px 3px rgba(0, 0, 0, 1),
+            -1px 1px 3px rgba(0, 0, 0, 1);
+    `;
+}
+
+// Position overlay when using fixed positioning
+function positionOverlayFixed(overlay, video) {
+    const rect = video.getBoundingClientRect();
+    const bottomOffset = rect.height * 0.1;
+    
+    overlay.style.position = 'fixed';
+    overlay.style.left = rect.left + 'px';
+    overlay.style.width = rect.width + 'px';
+    overlay.style.bottom = (window.innerHeight - rect.bottom + bottomOffset) + 'px';
+    overlay.style.transform = 'none';
+    overlay.style.textAlign = 'center';
+}
+
+// Adjust font size based on video dimensions
+function adjustOverlayFontSize(overlay, video) {
+    const videoHeight = video.offsetHeight;
+    const isFullscreen = document.fullscreenElement || 
+                        document.webkitFullscreenElement;
+    
+    let fontSize = Math.max(14, Math.min(32, videoHeight / 25));
+    
+    if (isFullscreen) {
+        fontSize = Math.max(20, Math.min(48, window.innerHeight / 30));
+    }
+    
+    overlay.style.fontSize = fontSize + 'px';
+    
+    const originalText = overlay.querySelector('.ultra-translate-subtitle-original');
+    const translatedText = overlay.querySelector('.ultra-translate-subtitle-translated');
+    
+    if (originalText) {
+        originalText.style.fontSize = (fontSize * 0.9) + 'px';
+        originalText.style.marginBottom = (fontSize / 4) + 'px';
+    }
+    
+    if (translatedText) {
+        translatedText.style.fontSize = fontSize + 'px';
+    }
+}
+
+// Main video subtitle translation handler with improved error handling
+async function handleVideoSubtitles(video) {
+    try {
+        // Skip if already processed
+        if (translatedTracks.has(video)) {
+            return;
+        }
+        
+        // Mark as being processed to prevent duplicate processing
+        translatedTracks.set(video, { processing: true });
+        
+        const subtitleInfo = await detectVideoSubtitles(video);
+        
+        if (!subtitleInfo.hasSubtitles) {
+            // No subtitles found, try alternative detection methods
+            const alternativeSubtitles = await detectAlternativeSubtitles(video);
+            
+            if (alternativeSubtitles.length > 0) {
+                // Process alternative subtitles
+                const translatedCues = await translateSubtitleCues(alternativeSubtitles, currentSettings);
+                
+                if (videoSubtitleSettings.bilingualMode === 'overlay') {
+                    createBilingualOverlay(video, translatedCues);
+                } else {
+                    injectTranslatedTrack(video, translatedCues, currentSettings.targetLanguage);
+                }
+                return;
+            }
+            
+            // Show ASR option if no subtitles found
+            if (videoSubtitleSettings.mode === 'asr') {
+                showASRNotification(video);
+            }
+            
+            // Clean up processing marker
+            translatedTracks.delete(video);
+            return;
+        }
+        
+        if (subtitleInfo.targetLanguageAvailable) {
+            // Target language already available, just enable it
+            const targetTrack = subtitleInfo.tracks.find(
+                t => t.language === currentSettings.targetLanguage
+            );
+            if (targetTrack) {
+                targetTrack.track.mode = 'showing';
+            }
+            translatedTracks.delete(video);
+            return;
+        }
+        
+        // Find a source track to translate
+        const sourceTrack = subtitleInfo.tracks.find(t => t.track.mode === 'showing') ||
+                            subtitleInfo.tracks.find(t => t.track.mode !== 'disabled') || 
+                            subtitleInfo.tracks[0];
+        
+        if (!sourceTrack) {
+            console.log('No source subtitle track found');
+            translatedTracks.delete(video);
+            return;
+        }
+        
+        // Ensure track is loaded with better error handling
+        sourceTrack.track.mode = 'hidden';
+        
+        // Wait for cues to load with multiple attempts
+        let cues = [];
+        let attempts = 0;
+        const maxAttempts = 3;
+        
+        while (attempts < maxAttempts && cues.length === 0) {
+            await new Promise(resolve => {
+                if (sourceTrack.track.cues && sourceTrack.track.cues.length > 0) {
+                    resolve();
+                } else {
+                    const loadHandler = () => resolve();
+                    sourceTrack.track.addEventListener('load', loadHandler, { once: true });
+                    sourceTrack.track.addEventListener('cuechange', loadHandler, { once: true });
+                    
+                    // Force track reload
+                    if (attempts > 0) {
+                        sourceTrack.track.mode = 'showing';
+                        setTimeout(() => {
+                            sourceTrack.track.mode = 'hidden';
+                        }, 100);
+                    }
+                    
+                    setTimeout(resolve, 2000); // Timeout after 2 seconds
+                }
+            });
+            
+            // Extract cues
+            cues = await extractSubtitleCues(sourceTrack.track, video);
+            attempts++;
+            
+            if (cues.length === 0 && attempts < maxAttempts) {
+                console.log(`Attempt ${attempts} failed, retrying...`);
+                await delay(500);
+            }
+        }
+        
+        if (cues.length === 0) {
+            console.log('No subtitle cues found after multiple attempts');
+            
+            // Try extracting from video player's custom subtitle system
+            const customCues = await extractCustomPlayerSubtitles(video);
+            if (customCues.length > 0) {
+                cues = customCues;
+            } else {
+                translatedTracks.delete(video);
+                return;
+            }
+        }
+        
+        // Translate cues with error recovery
+        let translatedCues;
+        try {
+            translatedCues = await translateSubtitleCues(cues, currentSettings);
+        } catch (translationError) {
+            console.error('Translation failed:', translationError);
+            // Show partial translation if some succeeded
+            translatedCues = cues.map(cue => ({
+                ...cue,
+                originalText: cue.text,
+                text: cue.text // Fallback to original
+            }));
+        }
+        
+        // Apply based on bilingual mode
+        if (videoSubtitleSettings.bilingualMode === 'overlay') {
+            createBilingualOverlay(video, translatedCues);
+        } else {
+            injectTranslatedTrack(video, translatedCues, currentSettings.targetLanguage);
+        }
+        
+        // Update processing status
+        const trackData = translatedTracks.get(video) || {};
+        trackData.processing = false;
+        translatedTracks.set(video, trackData);
+        
+    } catch (error) {
+        console.error('Error handling video subtitles:', error);
+        translatedTracks.delete(video);
+    }
+}
+
+// Detect alternative subtitle sources
+async function detectAlternativeSubtitles(video) {
+    const cues = [];
+    
+    // Check for YouTube-style captions
+    const captionElements = document.querySelectorAll(
+        '.ytp-caption-segment, .caption-visual-line, .player-timedtext'
+    );
+    
+    if (captionElements.length > 0) {
+        // Extract from live caption elements
+        let currentTime = video.currentTime;
+        captionElements.forEach(el => {
+            const text = el.textContent?.trim();
+            if (text) {
+                cues.push({
+                    startTime: currentTime,
+                    endTime: currentTime + 3,
+                    text: text
+                });
+                currentTime += 3;
+            }
+        });
+    }
+    
+    return cues;
+}
+
+// Extract subtitles from custom video players
+async function extractCustomPlayerSubtitles(video) {
+    const cues = [];
+    
+    // Check for video.js captions
+    const vjsTextTrack = video.parentElement?.querySelector('.vjs-text-track-display');
+    if (vjsTextTrack) {
+        const cueElements = vjsTextTrack.querySelectorAll('.vjs-text-track-cue');
+        cueElements.forEach(el => {
+            const text = el.textContent?.trim();
+            if (text) {
+                cues.push({
+                    startTime: video.currentTime,
+                    endTime: video.currentTime + 3,
+                    text: text
+                });
+            }
+        });
+    }
+    
+    // Check for JW Player captions
+    const jwCaptions = document.querySelector('.jw-captions');
+    if (jwCaptions) {
+        const text = jwCaptions.textContent?.trim();
+        if (text) {
+            cues.push({
+                startTime: video.currentTime,
+                endTime: video.currentTime + 3,
+                text: text
+            });
+        }
+    }
+    
+    return cues;
+}
+
+// Show notification for ASR feature (placeholder)
+function showASRNotification(video) {
+    const notification = document.createElement('div');
+    notification.className = 'ultra-translate-asr-notification';
+    notification.style.cssText = `
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 10px 15px;
+        border-radius: 5px;
+        font-size: 14px;
+        z-index: 999999;
+        pointer-events: auto;
+        cursor: pointer;
+    `;
+    notification.textContent = 'No subtitles detected. ASR feature coming soon...';
+    
+    const container = findBestVideoContainer(video);
+    if (container) {
+        container.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            notification.style.transition = 'opacity 0.5s';
+            setTimeout(() => notification.remove(), 500);
+        }, 5000);
     }
 }
 
@@ -2042,9 +2688,15 @@ function cleanupVideoSubtitles(video) {
             data.overlay.remove();
         }
         
-        // Remove event handler
+        // Remove event handlers
         if (data.updateHandler) {
             video.removeEventListener('timeupdate', data.updateHandler);
+        }
+        
+        if (data.resizeHandler) {
+            video.removeEventListener('resize', data.resizeHandler);
+            window.removeEventListener('resize', data.resizeHandler);
+            document.removeEventListener('fullscreenchange', data.resizeHandler);
         }
         
         translatedTracks.delete(video);
